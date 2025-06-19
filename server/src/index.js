@@ -2,7 +2,8 @@ const express = require('express');
 const cors = require('cors');
 const axios = require('axios');
 const cheerio = require('cheerio');
-const puppeteer = require('puppeteer');
+const puppeteer = require('puppeteer-core');
+const chromium = require('@sparticuz/chromium');
 
 const app = express();
 const port = process.env.PORT || 3000;
@@ -735,7 +736,12 @@ app.get('/search', async (req, res) => {
   try {
     // Ensure browser instance is available before starting searches
     if (!browserInstance) {
-        browserInstance = await puppeteer.launch({ headless: true });
+        browserInstance = await puppeteer.launch({
+            args: [...chromium.args, '--disable-gpu'],
+            defaultViewport: chromium.defaultViewport,
+            executablePath: await chromium.executablePath(),
+            headless: chromium.headless,
+        });
     }
 
     const searchPromises = [];
@@ -885,8 +891,13 @@ app.get('/search', async (req, res) => {
 app.listen(port, async () => {
   console.log(`Server running on port ${port}`);
   try {
-    browserInstance = await puppeteer.launch({ headless: true });
-    console.log('Puppeteer browser launched successfully.');
+    browserInstance = await puppeteer.launch({
+        args: [...chromium.args, '--disable-gpu'],
+        defaultViewport: chromium.defaultViewport,
+        executablePath: await chromium.executablePath(),
+        headless: chromium.headless,
+    });
+    console.log('Puppeteer browser launched successfully using @sparticuz/chromium.');
   } catch (error) {
     console.error('Failed to launch Puppeteer browser:', error);
     process.exit(1); // Exit if browser fails to launch
