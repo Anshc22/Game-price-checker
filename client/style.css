@@ -1,0 +1,341 @@
+body {
+    font-family: Arial, sans-serif;
+    margin: 0;
+    padding: 0;
+    background-color: #f4f4f4;
+    color: #333;
+}
+
+header {
+    background-color: #333;
+    color: #fff;
+    padding: 1rem 0;
+    text-align: center;
+}
+
+main {
+    padding: 20px;
+    text-align: center;
+}
+
+/* New styles below */
+.search-container {
+    margin-top: 20px;
+    margin-bottom: 30px; /* Added some space below the search bar */
+}
+
+#gameNameInput {
+    padding: 10px;
+    width: 300px;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    margin-right: 10px;
+    font-size: 16px;
+}
+
+#searchButton {
+    padding: 10px 20px;
+    background-color: #007bff;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 16px;
+    transition: background-color 0.3s ease; /* Smooth hover effect */
+}
+
+#searchButton:hover {
+    background-color: #0056b3;
+}
+
+/* Styles for the results table */
+#results-container {
+    margin-top: 20px;
+    display: flex;
+    flex-direction: column; /* Changed to column to stack table and pagination */
+    align-items: center;   /* Center content horizontally */
+}
+
+#priceTable {
+    width: 80%; /* Adjust as needed */
+    border-collapse: collapse;
+    margin-top: 20px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    background-color: #fff;
+}
+
+#priceTable th, #priceTable td {
+    border: 1px solid #ddd;
+    padding: 12px;
+    text-align: left;
+}
+
+#priceTable th {
+    background-color: #e2e2e2;
+    font-weight: bold;
+    cursor: pointer; /* Indicate that headers are clickable */
+    position: relative; /* For absolute positioning of the arrow */
+    padding-right: 30px; /* Make space for the arrow */
+}
+
+#priceTable th:hover {
+    background-color: #d8d8d8; /* Hover effect for headers */
+}
+
+/* Sort arrow styling */
+.sort-arrow {
+    position: absolute;
+    right: 10px;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 0;
+    height: 0;
+    border-left: 5px solid transparent;
+    border-right: 5px solid transparent;
+    border-bottom: 5px solid #555; /* Default: up arrow (no sort or unsorted) */
+    opacity: 0.4;
+}
+
+#priceTable th.asc .sort-arrow {
+    border-bottom: 5px solid #007bff; /* Up arrow for ascending */
+    opacity: 1;
+}
+
+#priceTable th.desc .sort-arrow {
+    border-top: 5px solid #007bff; /* Down arrow for descending */
+    border-bottom: none;
+    opacity: 1;
+}
+
+#priceTable td a {
+    color: #007bff;
+    text-decoration: none;
+}
+
+#priceTable td a:hover {
+    text-decoration: underline;
+}
+
+/* Styles for loading and no results messages */
+#loading, #noResults {
+    margin-top: 20px;
+    font-size: 1.1em;
+    color: #555;
+}
+
+.hidden {
+    display: none;
+}
+
+/* New styles for pagination */
+#pagination-controls {
+    margin-top: 20px;
+    display: flex;
+    align-items: center;
+    gap: 15px; /* Space between elements */
+}
+
+#pagination-controls button {
+    padding: 8px 15px;
+    background-color: #007bff;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 14px;
+    transition: background-color 0.3s ease;
+}
+
+#pagination-controls button:hover:not(:disabled) {
+    background-color: #0056b3;
+}
+
+#pagination-controls button:disabled {
+    background-color: #cccccc;
+    cursor: not-allowed;
+}
+
+#pageInfo {
+    font-weight: bold;
+}
+
+.filters-container {
+    margin-top: 20px;
+    text-align: center;
+}
+
+#storeFilter {
+    padding: 8px;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    /* You might want to adjust height for multi-select if options are many */
+    height: auto; /* Or a fixed height like 120px */
+}
+
+#applyFilterButton {
+    padding: 8px 15px;
+    background-color: #28a745;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    margin-left: 10px;
+}
+
+/* Notion-like Filter Styles */
+.notion-filter-container {
+    position: relative;
+    display: inline-block;
+    margin-top: 20px;
+}
+
+.notion-button {
+    background-color: #fff;
+    color: #333;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    padding: 8px 12px;
+    font-size: 14px;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    transition: background-color 0.2s ease-in-out;
+}
+
+.notion-button:hover {
+    background-color: #f5f5f5;
+}
+
+.notion-dropdown-content {
+    display: block;
+    position: absolute;
+    background-color: #fefefe;
+    min-width: 200px;
+    box-shadow: 0px 8px 16px 0px rgba(0,0,0,0.2);
+    z-index: 1;
+    border-radius: 6px;
+    padding: 10px 0;
+    margin-top: 5px;
+    left: 0; /* Align left with the button */
+}
+
+.notion-dropdown-content.hidden {
+    display: none;
+}
+
+.notion-checkbox-item {
+    display: flex;
+    align-items: center;
+    padding: 8px 15px;
+    cursor: pointer;
+    font-size: 14px;
+    color: #333;
+}
+
+.notion-checkbox-item:hover {
+    background-color: #e9e9e9;
+}
+
+.notion-checkbox-item input[type="checkbox"] {
+    margin-right: 10px;
+    /* Custom checkbox styling (optional, more complex) */
+    -webkit-appearance: none;
+    -moz-appearance: none;
+    appearance: none;
+    width: 16px;
+    height: 16px;
+    border: 1px solid #bbb;
+    border-radius: 3px;
+    background-color: #fff;
+    cursor: pointer;
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.notion-checkbox-item input[type="checkbox"]:checked {
+    background-color: #007bff; /* Blue for checked */
+    border-color: #007bff;
+}
+
+.notion-checkbox-item input[type="checkbox"]:checked::before {
+    content: '\2713'; /* Checkmark character */
+    font-size: 12px;
+    color: white;
+}
+
+.notion-dropdown-actions {
+    padding: 10px 15px 5px;
+    border-top: 1px solid #eee;
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+}
+
+.notion-button-small {
+    background-color: #007bff;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    padding: 6px 10px;
+    font-size: 13px;
+    cursor: pointer;
+    transition: background-color 0.2s ease-in-out;
+}
+
+.notion-button-small:hover {
+    background-color: #0056b3;
+}
+
+.notion-button-small.clear-button {
+    background-color: #f0f0f0;
+    color: #333;
+}
+
+.notion-button-small.clear-button:hover {
+    background-color: #e0e0e0;
+}
+
+/* Add this to your style.css */
+
+.dropdown-content label.disabled-label {
+    color: #999; /* Grey out the text */
+    cursor: not-allowed; /* Change cursor to indicate it's not clickable */
+    opacity: 0.7; /* Slightly reduce opacity */
+    pointer-events: none; /* Crucial: Prevents clicks on the label and checkbox */
+}
+
+.dropdown-content label.disabled-label input[type="checkbox"] {
+    cursor: not-allowed;
+}
+
+/* Existing button styles (ensure consistency) */
+.button {
+    /* ... your existing button styles ... */
+    padding: 10px 15px;
+    border: none;
+    border-radius: 5px;
+    cursor: pointer;
+    font-size: 1em;
+    transition: background-color 0.2s ease;
+}
+
+.button-secondary {
+    background-color: #6c757d; /* A neutral color */
+    color: white;
+}
+
+.button-secondary:hover {
+    background-color: #5a6268;
+}
+
+.button-danger {
+    background-color: #dc3545;
+    color: white;
+}
+
+.button-danger:hover {
+    background-color: #c82333;
+}

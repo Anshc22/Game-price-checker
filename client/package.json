@@ -1,0 +1,16 @@
+{
+  "name": "game-price-checker-client",
+  "version": "1.0.0",
+  "description": "Frontend for the Game Price Checker website",
+  "main": "index.js",
+  "scripts": {
+    "start": "live-server --port=8080 --ignore=node_modules",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "devDependencies": {
+    "live-server": "^1.2.2"
+  }
+}

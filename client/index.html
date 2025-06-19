@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Game Price Checker</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <header>
+        <h1>Game Price Checker</h1>
+    </header>
+    <main>
+        <p>Search for game prices here.</p>
+        <div class="search-container">
+            <input type="text" id="gameNameInput" placeholder="Enter game name...">
+            <button id="searchButton" class="button">Search</button>
+            <button id="stopSearchButton" class="button button-danger hidden">Stop Search</button>
+        </div>
+
+        <div class="filter-controls">
+            <button id="filterToggleButton" class="button">Filter Stores <span class="arrow-down"></span></button>
+            <div id="storeFilterDropdown" class="dropdown-content hidden">
+                <label><input type="checkbox" value="All" checked> All Stores</label>
+                <label><input type="checkbox" value="Steam"> Steam</label>
+                <label><input type="checkbox" value="Eneba"> Eneba</label>
+                <label><input type="checkbox" value="CDKeys"> CDKeys</label>
+                <label><input type="checkbox" value="Kinguin"> Kinguin</label>
+                <label><input type="checkbox" value="Epic Games"> Epic Games</label>
+                <label><input type="checkbox" value="GOG"> GOG</label>
+                <label><input type="checkbox" value="Xbox Game Pass"> Xbox Game Pass</label>
+                <div class="filter-actions">
+                    <button id="applyFilterButton" class="button">Apply Filter</button>
+                </div>
+            </div>
+            <div id="appliedFiltersDisplay">Active Filters: All Stores</div>
+        </div>
+
+        <div id="loading" class="hidden">Searching...</div>
+        <p id="noResults" class="hidden">No results found.</p>
+
+        <div class="table-container">
+            <table id="priceTable">
+                <thead>
+                    <tr>
+                        <th>Index</th>
+                        <th data-sort-by="name">Game Name <span class="sort-arrow"></span></th>
+                        <th data-sort-by="website">Website <span class="sort-arrow"></span></th>
+                        <th data-sort-by="price">Price <span class="sort-arrow"></span></th>
+                        <th>Link</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <!-- Results will be injected here -->
+                </tbody>
+            </table>
+        </div>
+
+        <div id="pagination-controls" class="hidden" style="margin-top: 20px; text-align: center;">
+            <button id="prevPage">Previous</button>
+            <span id="pageInfo"></span>
+            <button id="nextPage">Next</button>
+        </div>
+        </div>
+    </main>
+    <script src="script.js" defer></script>
+</body>
+</html>
