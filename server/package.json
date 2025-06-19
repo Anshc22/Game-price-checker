@@ -1,17 +1,19 @@
 {
   "name": "game-price-checker-server",
   "version": "1.0.0",
-  "description": "Backend for the Game Price Checker website",
+  "description": "Backend server for game price checking and scraping.",
   "main": "src/index.js",
   "scripts": {
-    "start": "node src/index.js",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "start": "node src/index.js"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "dependencies": {
-    "express": "^4.18.2",
-    "puppeteer": "^24.10.2"
+    "axios": "^1.7.2",
+    "cheerio": "^1.0.0-rc.12",
+    "cors": "^2.8.5",
+    "express": "^4.19.2",
+    "puppeteer": "^22.13.1"
   }
 }
