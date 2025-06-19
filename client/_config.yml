@@ -1,0 +1,3 @@
+# Exclude the node_modules directory from Jekyll's build process
+exclude:
+  - node_modules/
