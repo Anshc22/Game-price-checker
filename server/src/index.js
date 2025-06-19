@@ -737,7 +737,7 @@ app.get('/search', async (req, res) => {
     // Ensure browser instance is available before starting searches
     if (!browserInstance) {
         browserInstance = await puppeteer.launch({
-            args: [...chromium.args(), '--disable-gpu'],
+            args: [...chromium.args, '--disable-gpu'],
             defaultViewport: chromium.defaultViewport,
             executablePath: await chromium.executablePath(),
             headless: chromium.headless,
@@ -892,7 +892,7 @@ app.listen(port, async () => {
   console.log(`Server running on port ${port}`);
   try {
     browserInstance = await puppeteer.launch({
-        args: [...chromium.args(), '--disable-gpu'],
+        args: [...chromium.args, '--disable-gpu'],
         defaultViewport: chromium.defaultViewport,
         executablePath: await chromium.executablePath(),
         headless: chromium.headless,
