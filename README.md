@@ -5,6 +5,9 @@
 This project is a full-stack web application that allows users to search and compare game prices across multiple online stores, including Steam, Epic Games, GOG, CDKeys, Xbox Game Pass, and more. The app features a modern, responsive frontend and a robust Node.js backend that scrapes live prices using Puppeteer and Cheerio.
 
 ---
+## Sample
+
+![image](https://github.com/user-attachments/assets/7f975899-3602-468c-a1c7-8caa276105da)
 
 ## Features
 
