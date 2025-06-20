@@ -18,14 +18,15 @@ document.addEventListener('DOMContentLoaded', () => {
     const prevPageButton = document.getElementById('prevPage');
     const nextPageButton = document.getElementById('nextPage');
     const pageInfoSpan = document.getElementById('pageInfo');
+    // New bottom controls
+    const paginationControlsBottom = document.getElementById('pagination-controls-bottom');
+    const prevPageButtonBottom = document.getElementById('prevPageBottom');
+    const nextPageButtonBottom = document.getElementById('nextPageBottom');
+    const pageInfoSpanBottom = document.getElementById('pageInfoBottom');
 
     // New filter elements (updated IDs)
-    const filterToggleButton = document.getElementById('filterToggleButton');
-    const storeFilterDropdown = document.getElementById('storeFilterDropdown');
-    const storeCheckboxes = document.querySelectorAll('#storeFilterDropdown input[type="checkbox"]');
-    const applyFilterButton = document.getElementById('applyFilterButton');
-    const clearFilterButton = document.getElementById('clearFilterButton'); // New clear button
-    const appliedFiltersDisplay = document.getElementById('appliedFiltersDisplay');
+    const storeFilterContainer = document.getElementById('sidebar-filters');
+    const storeCheckboxes = document.querySelectorAll('#sidebar-filters input[type="checkbox"]');
 
     let currentSortColumn = null;
     let currentSortOrder = 'asc'; // 'asc' or 'desc'
@@ -36,28 +37,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
     let currentPage = 1;
     const itemsPerPage = 30; // Set items per page
-
-    // Function to toggle the filter dropdown visibility
-    function toggleFilterDropdown() {
-        storeFilterDropdown.classList.toggle('hidden');
-    }
-
-    // Function to update the display of applied filters
-    function updateAppliedFiltersDisplay() {
-        const selectedOptions = Array.from(storeCheckboxes)
-            .filter(checkbox => checkbox.checked)
-            .map(checkbox => checkbox.parentNode.textContent.trim()); // Get label text
-
-        if (selectedOptions.length === 0 || selectedOptions.includes('All Stores')) {
-            appliedFiltersDisplay.textContent = 'Active Filters: All Stores';
-            // Removed: Logic to ensure 'All' checkbox is checked/unchecked here.
-            // This is now handled solely by handleAllStoresCheckbox.
-        } else {
-            appliedFiltersDisplay.textContent = `Active Filters: ${selectedOptions.join(', ')}`;
-            // Removed: Logic to ensure 'All' checkbox is checked/unchecked here.
-            // This is now handled solely by handleAllStoresCheckbox.
-        }
-    }
 
     // Function to filter results by selected stores
     function filterResultsByStore() {
@@ -72,49 +51,53 @@ document.addEventListener('DOMContentLoaded', () => {
         }
         currentPage = 1;
         goToPage(1);
+        updateStoreFilterCounts(); // Update counts after filtering
     }
 
     // Function to handle "All Stores" checkbox logic and disable/enable other checkboxes
     function handleAllStoresCheckbox(changedCheckbox) {
+        console.log('handleAllStoresCheckbox called. Changed checkbox:', changedCheckbox.value, 'Checked:', changedCheckbox.checked);
         const allCheckbox = Array.from(storeCheckboxes).find(cb => cb.value === 'All');
 
-        if (!allCheckbox) return; // Safety check
+        if (!allCheckbox) {
+            console.error('All Stores checkbox not found!');
+            return; // Safety check
+        }
 
         if (changedCheckbox.value === 'All') {
             if (changedCheckbox.checked) {
-                // If "All" is checked, uncheck and disable all other stores
+                // If "All" is checked, CHECK and disable all other stores
+                console.log('All Stores checked. Checking and disabling others.');
                 storeCheckboxes.forEach(cb => {
                     if (cb !== allCheckbox) {
-                        cb.checked = false; // Ensure they are unchecked
+                        cb.checked = true; // Ensure they are checked
                         cb.disabled = true; // Disable the input
                         cb.parentNode.classList.add('disabled-label'); // Add class for styling and pointer-events
+                        console.log(`  - Set ${cb.value}: checked=${cb.checked}, disabled=${cb.disabled}, class added`);
                     }
                 });
             } else {
                 // If "All" is UNCHECKED: enable all other stores
+                console.log('All Stores UNCHECKED. Enabling others.');
                 storeCheckboxes.forEach(cb => {
                     cb.disabled = false; // Enable the input
                     cb.parentNode.classList.remove('disabled-label'); // Remove class
+                    console.log(`  - Set ${cb.value}: disabled=${cb.disabled}, class removed`);
                 });
 
-                // IMPORTANT: If "All" was just unchecked, and no other specific store is checked,
-                // automatically re-check "All" to prevent an empty filter selection.
-                const anyOtherChecked = Array.from(storeCheckboxes).some(cb => cb.checked && cb.value !== 'All');
-                if (!anyOtherChecked) {
-                    allCheckbox.checked = true; // Re-check "All"
-                    // Since "All" is re-checked, re-disable others
-                    storeCheckboxes.forEach(cb => {
-                        if (cb !== allCheckbox) {
-                            cb.disabled = true;
-                            cb.parentNode.classList.add('disabled-label');
-                        }
-                    });
-                }
+                // If "All" is unchecked, uncheck all other stores as well
+                storeCheckboxes.forEach(cb => {
+                    if (cb !== allCheckbox) {
+                        cb.checked = false;
+                    }
+                });
             }
         } else { // A non-"All" store checkbox was clicked
+            console.log('Non-All store checkbox clicked:', changedCheckbox.value);
             if (changedCheckbox.checked) {
                 // If a specific store is checked, ensure "All" is unchecked and others are enabled
                 if (allCheckbox.checked) {
+                    console.log('  Specific store checked, unchecking All.');
                     allCheckbox.checked = false;
                     // Enable all other checkboxes (they should already be enabled if All was unchecked, but ensuring)
                     storeCheckboxes.forEach(cb => {
@@ -123,20 +106,21 @@ document.addEventListener('DOMContentLoaded', () => {
                     });
                 }
             } else { // A specific store was UNCHECKED
-                // If all specific stores are now unchecked, re-check "All" and disable others
+                // If all specific stores are now unchecked, uncheck "All" as well
+                console.log('  Specific store UNCHECKED.');
                 const anyOtherChecked = Array.from(storeCheckboxes).some(cb => cb.checked && cb.value !== 'All');
+                console.log('  Any other store checked after specific unchecked:', anyOtherChecked);
                 if (!anyOtherChecked) {
-                    allCheckbox.checked = true;
+                    console.log('  No other specific stores checked, unchecking All and all others.');
+                    allCheckbox.checked = false;
                     storeCheckboxes.forEach(cb => {
                         if (cb !== allCheckbox) {
-                            cb.disabled = true;
-                            cb.parentNode.classList.add('disabled-label');
+                            cb.checked = false;
                         }
                     });
                 }
             }
         }
-        updateAppliedFiltersDisplay(); // Always update display after state changes
     }
 
     // Function to render the table rows for the current page
@@ -144,12 +128,47 @@ document.addEventListener('DOMContentLoaded', () => {
         priceTableBody.innerHTML = ''; // Clear existing rows
         if (resultsToRender.length > 0) {
             resultsToRender.forEach((item, index) => {
+                console.log('Rendering item:', item); // LOG
                 const row = priceTableBody.insertRow();
                 row.insertCell(0).textContent = (currentPage - 1) * itemsPerPage + index + 1; // Row number
-                row.insertCell(1).textContent = item.name;
-                row.insertCell(2).textContent = item.website;
-                row.insertCell(3).textContent = (typeof item.price === 'number' && item.price === 0) ? '0' : (typeof item.price === 'number' ? `₹ ${item.price.toLocaleString('en-IN')}` : item.price);
-                const linkCell = row.insertCell(4);
+                // New: Image column
+                const imageCell = row.insertCell(1);
+                if (item.image) {
+                    const img = document.createElement('img');
+                    img.src = item.image;
+                    img.alt = item.name + ' cover';
+                    img.className = 'game-cover-thumb';
+                    imageCell.appendChild(img);
+                }
+                // Game Name
+                const nameCell = row.insertCell(2);
+                if (item.link) {
+                    const a = document.createElement('a');
+                    a.href = item.link;
+                    a.textContent = item.name;
+                    a.target = '_blank';
+                    a.rel = 'noopener';
+                    nameCell.appendChild(a);
+                } else {
+                    nameCell.textContent = item.name;
+                }
+                // Store Icon
+                const iconCell = row.insertCell(3);
+                const storeIcon = document.createElement('img');
+                if (item.website === 'GOG') storeIcon.src = '/icons/GOG.png';
+                else if (item.website === 'Eneba') storeIcon.src = '/icons/Eneba.png';
+                else if (item.website === 'Kinguin') storeIcon.src = '/icons/Kinguin.jpg';
+                else if (item.website === 'Xbox Game Pass') storeIcon.src = '/icons/Xbox.jpg';
+                else if (item.website === 'G2A') storeIcon.src = '/icons/g2a.jpg';
+                else storeIcon.src = item.icon;
+                storeIcon.alt = item.website + ' Logo';
+                storeIcon.title = item.website; // Show store name on hover
+                storeIcon.classList.add('store-icon'); // Add class for styling
+                iconCell.appendChild(storeIcon);
+                // Price
+                row.insertCell(4).textContent = (typeof item.price === 'number' && item.price === 0) ? '0' : (typeof item.price === 'number' ? `₹ ${item.price.toLocaleString('en-IN')}` : item.price);
+                // Link
+                const linkCell = row.insertCell(5);
                 const link = document.createElement('a');
                 link.href = item.link;
                 link.textContent = 'Go to Store';
@@ -163,14 +182,17 @@ document.addEventListener('DOMContentLoaded', () => {
     function updatePaginationControls() {
         const totalPages = Math.ceil(displayedResults.length / itemsPerPage);
         pageInfoSpan.textContent = `Page ${currentPage} of ${totalPages || 1}`;
-
+        pageInfoSpanBottom.textContent = `Page ${currentPage} of ${totalPages || 1}`;
         prevPageButton.disabled = currentPage === 1;
         nextPageButton.disabled = currentPage === totalPages || totalPages === 0;
-
+        prevPageButtonBottom.disabled = currentPage === 1;
+        nextPageButtonBottom.disabled = currentPage === totalPages || totalPages === 0;
         if (displayedResults.length > 0) {
             paginationControls.classList.remove('hidden');
+            paginationControlsBottom.classList.remove('hidden');
         } else {
             paginationControls.classList.add('hidden');
+            paginationControlsBottom.classList.add('hidden');
         }
     }
 
@@ -228,11 +250,21 @@ document.addEventListener('DOMContentLoaded', () => {
                     return order === 'asc' ? 1 : -1;
                 }
                 return 0; // Prices are equal
-            } else {
-                // Default to string comparison for name and website
+            } else if (column === 'name' || column === 'website') {
+                // String comparison for Game Name and Store
                 valA = String(valA).toLowerCase();
                 valB = String(valB).toLowerCase();
-
+                if (valA < valB) {
+                    return order === 'asc' ? -1 : 1;
+                }
+                if (valA > valB) {
+                    return order === 'asc' ? 1 : -1;
+                }
+                return 0;
+            } else {
+                // Default to string comparison for any other columns
+                valA = String(valA).toLowerCase();
+                valB = String(valB).toLowerCase();
                 if (valA < valB) {
                     return order === 'asc' ? -1 : 1;
                 }
@@ -293,9 +325,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
             const data = await response.json();
             fetchedResults = data;
-            
+            console.log('Fetched results from backend:', fetchedResults); // LOG
             filterResultsByStore();
-            updateAppliedFiltersDisplay();
+            updateStoreFilterCounts(); // Update counts after fetching
 
             loadingDiv.classList.add('hidden');
             stopSearchButton.classList.add('hidden'); // Hide stop search button on completion
@@ -336,141 +368,39 @@ document.addEventListener('DOMContentLoaded', () => {
         paginationControls.classList.add('hidden');
     });
 
-    // Event listener for filter toggle button
-    filterToggleButton.addEventListener('click', toggleFilterDropdown);
-
-    // Event listener for applying filters
-    applyFilterButton.addEventListener('click', async () => {
-        toggleFilterDropdown(); // Close the dropdown
-
-        const gameName = gameNameInput.value.trim();
-        const currentSelectedStores = Array.from(storeCheckboxes)
-            .filter(checkbox => checkbox.checked)
-            .map(checkbox => checkbox.value);
-
-        // Find newly selected stores (stores in currentSelectedStores but not in previouslySelectedStores)
-        const newlySelectedStores = currentSelectedStores.filter(store => !previouslySelectedStores.includes(store));
-
-        if (gameName && newlySelectedStores.length > 0) {
-            // Only fetch data for newly selected stores if there's an existing search
-            loadingDiv.classList.remove('hidden');
-            noResultsP.classList.add('hidden');
-            paginationControls.classList.add('hidden');
-            priceTableBody.innerHTML = ''; // Clear current display while fetching new data
-            stopSearchButton.classList.remove('hidden'); // Show stop search button
-
-            // Initialize a new AbortController for this filter application
-            if (abortController) {
-                abortController.abort();
-            }
-            abortController = new AbortController();
-            const signal = abortController.signal;
-
-            try {
-                const storesQuery = `&stores=${newlySelectedStores.join(',')}`;
-                const response = await fetch(`http://localhost:3000/search?gameName=${encodeURIComponent(gameName)}${storesQuery}`, { signal });
-                
-                if (!response.ok) {
-                    throw new Error(`HTTP error! status: ${response.status}`);
-                }
-                const newData = await response.json();
-                
-                // Merge new data with existing fetchedResults
-                fetchedResults = fetchedResults.concat(newData);
-                
-                // Update previouslySelectedStores
-                previouslySelectedStores = [...currentSelectedStores];
-
-                // Now filter all results based on the new filter
-                filterResultsByStore();
-                updateAppliedFiltersDisplay();
-
-                loadingDiv.classList.add('hidden');
-                stopSearchButton.classList.add('hidden'); // Hide stop search button
-                if (displayedResults.length > 0) {
-                    sortResults(currentSortColumn, currentSortOrder);
-                } else {
-                    noResultsP.classList.remove('hidden');
-                }
-
-            } catch (error) {
-                if (error.name === 'AbortError') {
-                    console.log('Filter fetch aborted by user.');
-                    noResultsP.textContent = 'Filter application stopped.';
-                    noResultsP.classList.remove('hidden');
-                } else {
-                    console.error('Error fetching new game prices for added stores:', error);
-                    noResultsP.textContent = 'Failed to load prices for new stores. Please try again.';
-                    noResultsP.classList.remove('hidden');
-                }
-                loadingDiv.classList.add('hidden');
-                stopSearchButton.classList.add('hidden'); // Hide stop search button
-            } finally {
-                abortController = null; // Clear controller after request
-            }
-        } else {
-            // If no game name or no new stores, just apply the filter on existing data
-            previouslySelectedStores = [...currentSelectedStores]; // Update for next comparison
-            filterResultsByStore();
-            updateAppliedFiltersDisplay();
-            if (displayedResults.length > 0) {
-                sortResults(currentSortColumn, currentSortOrder);
-            } else {
-                noResultsP.classList.remove('hidden');
-            }
-        }
-    });
-
-    // Event listener for clearing filters
-    clearFilterButton.addEventListener('click', () => {
-        // This button now needs to explicitly reset to "All Stores" state
-        const allCheckbox = Array.from(storeCheckboxes).find(cb => cb.value === 'All');
-        if (allCheckbox) {
-            allCheckbox.checked = true; // Ensure "All Stores" is checked
-            allCheckbox.dispatchEvent(new Event('change')); // Trigger change to update other checkboxes
-        }
-        previouslySelectedStores = ['All']; // Reset previously selected stores
-        filterResultsByStore(); // Re-apply filter (will show all fetched results)
-        updateAppliedFiltersDisplay(); // Update display
-        // toggleFilterDropdown(); // Decide if you want to close the dropdown on clear
-    });
-
-    // Add event listeners to store checkboxes
-    storeCheckboxes.forEach(checkbox => {
-        checkbox.addEventListener('change', (event) => {
-            handleAllStoresCheckbox(event.target);
-        });
-    });
-
-    // Close dropdown if clicked outside
-    document.addEventListener('click', (event) => {
-        if (!storeFilterDropdown.contains(event.target) && !filterToggleButton.contains(event.target)) {
-            if (!storeFilterDropdown.classList.contains('hidden')) {
-                toggleFilterDropdown();
-            }
-        }
-    });
-
-    // Event listeners for table headers
+    // Event listeners for sorting
     tableHeaders.forEach(header => {
         header.addEventListener('click', () => {
-            if (displayedResults.length === 0) return;
-
             const column = header.dataset.sortBy;
+            const order = header.dataset.sortOrder; // Get current order from dataset
+            const newOrder = (order === 'asc' || !order) ? 'desc' : 'asc'; // Toggle order
+            // Update the dataset attribute
+            header.dataset.sortOrder = newOrder;
 
-            if (currentSortColumn === column) {
-                currentSortOrder = currentSortOrder === 'asc' ? 'desc' : 'asc';
-            } else {
-                currentSortColumn = column;
-                currentSortOrder = 'asc';
-            }
+            // Remove sort class from other headers and add to current
+            tableHeaders.forEach(h => h.classList.remove('sort-asc', 'sort-desc'));
+            header.classList.add(`sort-${newOrder}`);
 
-            tableHeaders.forEach(h => h.classList.remove('asc', 'desc'));
-            header.classList.add(currentSortOrder);
-
+            currentSortColumn = column;
+            currentSortOrder = newOrder;
             sortResults(currentSortColumn, currentSortOrder);
         });
     });
+
+    // Add event listeners to each store checkbox
+    storeCheckboxes.forEach(checkbox => {
+        checkbox.addEventListener('change', (event) => {
+            handleAllStoresCheckbox(event.target);
+            // Apply filter immediately when checkbox changes
+            filterResultsByStore();
+        });
+    });
+
+    // New: Handle initial state of "All Stores" checkbox on page load
+    const initialAllCheckbox = document.getElementById('allStores');
+    if (initialAllCheckbox && initialAllCheckbox.checked) {
+        handleAllStoresCheckbox(initialAllCheckbox);
+    }
 
     // Pagination button event listeners
     prevPageButton.addEventListener('click', () => {
@@ -481,12 +411,70 @@ document.addEventListener('DOMContentLoaded', () => {
         goToPage(currentPage + 1);
     });
 
+    // New bottom controls event listeners
+    prevPageButtonBottom.addEventListener('click', () => {
+        goToPage(currentPage - 1);
+    });
+
+    nextPageButtonBottom.addEventListener('click', () => {
+        goToPage(currentPage + 1);
+    });
+
     // Initial setup: ensure 'All Stores' is initially checked and others are disabled/greyed out
-    const initialAllCheckbox = Array.from(storeCheckboxes).find(cb => cb.value === 'All');
-    if (initialAllCheckbox) {
-        handleAllStoresCheckbox(initialAllCheckbox);
+    const allStoresCheckbox = Array.from(storeCheckboxes).find(cb => cb.value === 'All');
+    if (allStoresCheckbox) {
+        handleAllStoresCheckbox(allStoresCheckbox);
     }
-    updateAppliedFiltersDisplay();
     goToPage(currentPage); // Initial rendering
+
+    function updateStoreFilterCounts() {
+        // Count results for each store in the currently displayed results
+        const storeCounts = {};
+        fetchedResults.forEach(item => {
+            if (!storeCounts[item.website]) storeCounts[item.website] = 0;
+            storeCounts[item.website]++;
+        });
+        // Update the count badges in the sidebar
+        document.querySelectorAll('#sidebar-filters .filter-checkbox').forEach(cbDiv => {
+            const input = cbDiv.querySelector('input[type="checkbox"]');
+            const label = cbDiv.querySelector('label');
+            if (!input || !label) return;
+            // Remove any old count badge
+            const oldBadge = label.querySelector('.filter-result-count');
+            if (oldBadge) oldBadge.remove();
+            // Skip "All Stores"
+            if (input.value === 'All') return;
+            // Add new badge if there are results for this store
+            const count = storeCounts[input.value] || 0;
+            const badge = document.createElement('span');
+            badge.className = 'filter-result-count';
+            badge.textContent = `(${count})`;
+            label.appendChild(badge);
+        });
+    }
+
+    // Add filter stores toggle arrow logic
+    window.addEventListener('DOMContentLoaded', function() {
+        const filterContainer = document.querySelector('.filter-stores-container');
+        if (filterContainer) {
+            // Create arrow button if not present
+            let arrow = document.querySelector('.filter-stores-toggle-arrow');
+            if (!arrow) {
+                arrow = document.createElement('span');
+                arrow.className = 'filter-stores-toggle-arrow expanded';
+                arrow.innerHTML = `
+                    <svg width="24" height="24" viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                `;
+                filterContainer.parentElement.style.position = 'relative';
+                filterContainer.parentElement.appendChild(arrow);
+            }
+            arrow.addEventListener('click', function() {
+                const isCollapsed = filterContainer.classList.toggle('filter-stores-collapsed');
+                arrow.classList.toggle('collapsed', isCollapsed);
+                arrow.classList.toggle('expanded', !isCollapsed);
+            });
+        }
+    });
 });
+
 

@@ -11,56 +11,103 @@
         <h1>Game Price Checker</h1>
     </header>
     <main>
-        <p>Search for game prices here.</p>
-        <div class="search-container">
-            <input type="text" id="gameNameInput" placeholder="Enter game name...">
-            <button id="searchButton" class="button">Search</button>
-            <button id="stopSearchButton" class="button button-danger hidden">Stop Search</button>
-        </div>
-
-        <div class="filter-controls">
-            <button id="filterToggleButton" class="button">Filter Stores <span class="arrow-down"></span></button>
-            <div id="storeFilterDropdown" class="dropdown-content hidden">
-                <label><input type="checkbox" value="All" checked> All Stores</label>
-                <label><input type="checkbox" value="Steam"> Steam</label>
-                <label><input type="checkbox" value="Eneba"> Eneba</label>
-                <label><input type="checkbox" value="CDKeys"> CDKeys</label>
-                <label><input type="checkbox" value="Kinguin"> Kinguin</label>
-                <label><input type="checkbox" value="Epic Games"> Epic Games</label>
-                <label><input type="checkbox" value="GOG"> GOG</label>
-                <label><input type="checkbox" value="Xbox Game Pass"> Xbox Game Pass</label>
-                <div class="filter-actions">
-                    <button id="applyFilterButton" class="button">Apply Filter</button>
+        <div class="main-content-wrapper">
+            <div id="sidebar-filters">
+                <h3>Filter Stores</h3>
+                <div class="filter-checkbox">
+                    <input type="checkbox" id="allStores" value="All" checked>
+                    <label for="allStores" class="store-icon-label" title="All Stores">
+                        <img src="data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjQiIGhlaWdodD0iMjQiIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPHBhdGggZD0iTTE5IDNIMTlDMTcuMzQzMSAzIDE2IDQuMzQzMTUgMTYgNlYxOEMxNiAxOS42NTY5IDE3LjM0MzEgMjEgMTkgMjFIMTlDMjAuNjU2OSAyMSAyMiAxOS42NTY5IDIyIDE4VjZDMjIgNC4zNDMxNSAyMC42NTY5IDMgMTkgM1oiIHN0cm9rZT0iY3VycmVudENvbG9yIiBzdHJva2Utd2lkdGg9IjIiIHN0cm9rZS1saW5lY2FwPSJyb3VuZCIgc3Ryb2tlLWxpbmVqb2luPSJyb3VuZCIvPgo8cGF0aCBkPSJNMTIgM0gxMkMxMC4zNDMxIDMgOSA0LjM0MzE1IDkgNlYxOEM5IDE5LjY1NjkgMTAuMzQzMSAyMSAxMiAyMUgxMkMxMy42NTY5IDIxIDE1IDE5LjY1NjkgMTUgMThWNkMxNSA0LjM0MzE1IDEzLjY1NjkgMyAxMiAzWiIgc3Ryb2tlPSJjdXJyZW50Q29sb3IiIHN0cm9rZS13aWR0aD0iMiIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIiBzdHJva2UtbGluZWpvaW49InJvdW5kIi8+CjxwYXRoIGQ9Ik01IDNINUMzLjM0MzE1IDMgMiA0LjM0MzE1IDIgNlYxOEMyIDE5LjY1NjkgMy4zNDMxNSAyMSA1IDIxSDVDNi42NTY4NSAyMSA4IDE5LjY1NjkgOCAxOFY2QzggNC4zNDMxNSA2LjY1Njg1IDMgNSAzWiIgc3Ryb2tlPSJjdXJyZW50Q29sb3IiIHN0cm9rZS13aWR0aD0iMiIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIiBzdHJva2UtbGluZWpvaW49InJvdW5kIi8+Cjwvc3ZnPgo=" alt="All Stores" class="filter-store-icon">
+                    </label>
+                </div>
+                <div class="filter-checkbox">
+                    <input type="checkbox" id="steam" value="Steam">
+                    <label for="steam" class="store-icon-label" title="Steam">
+                        <img src="https://community.cloudflare.steamstatic.com/public/shared/images/responsive/share_steam_logo.png" alt="Steam" class="filter-store-icon">
+                    </label>
+                </div>
+                <div class="filter-checkbox">
+                    <input type="checkbox" id="gog" value="GOG">
+                    <label for="gog" class="store-icon-label" title="GOG">
+                        <img src="/icons/GOG.png" alt="GOG" class="filter-store-icon">
+                    </label>
+                </div>
+                <div class="filter-checkbox">
+                    <input type="checkbox" id="eneba" value="Eneba">
+                    <label for="eneba" class="store-icon-label" title="Eneba">
+                        <img src="/icons/Eneba.png" alt="Eneba" class="filter-store-icon">
+                    </label>
+                </div>
+                <div class="filter-checkbox">
+                    <input type="checkbox" id="cdkeys" value="CDKeys">
+                    <label for="cdkeys" class="store-icon-label" title="CDKeys">
+                        <img src="https://upload.wikimedia.org/wikipedia/commons/f/f3/CD_Keys.png" alt="CDKeys" class="filter-store-icon">
+                    </label>
+                </div>
+                <div class="filter-checkbox">
+                    <input type="checkbox" id="g2a" value="G2A">
+                    <label for="g2a" class="store-icon-label" title="G2A">
+                        <img src="/icons/g2a.jpg" alt="G2A" class="filter-store-icon">
+                    </label>
+                </div>
+                <div class="filter-checkbox">
+                    <input type="checkbox" id="kinguin" value="Kinguin">
+                    <label for="kinguin" class="store-icon-label" title="Kinguin">
+                        <img src="/icons/Kinguin.jpg" alt="Kinguin" class="filter-store-icon">
+                    </label>
+                </div>
+                <div class="filter-checkbox">
+                    <input type="checkbox" id="epic" value="Epic Games">
+                    <label for="epic" class="store-icon-label" title="Epic Games">
+                        <img src="https://upload.wikimedia.org/wikipedia/commons/5/57/Epic_games_store_logo.svg" alt="Epic Games" class="filter-store-icon">
+                    </label>
+                </div>
+                <div class="filter-checkbox">
+                    <input type="checkbox" id="xbox" value="Xbox Game Pass">
+                    <label for="xbox" class="store-icon-label" title="Xbox Game Pass">
+                        <img src="/icons/Xbox.jpg" alt="Xbox Game Pass" class="filter-store-icon">
+                    </label>
                 </div>
             </div>
-            <div id="appliedFiltersDisplay">Active Filters: All Stores</div>
-        </div>
 
-        <div id="loading" class="hidden">Searching...</div>
-        <p id="noResults" class="hidden">No results found.</p>
+            <div class="results-area">
+                <div class="search-container">
+                    <input type="text" id="gameNameInput" placeholder="Enter game name">
+                    <button id="searchButton" class="button">Search</button>
+                    <button id="stopSearchButton" class="button button-danger hidden">Stop Search</button>
+                </div>
 
-        <div class="table-container">
-            <table id="priceTable">
-                <thead>
-                    <tr>
-                        <th>Index</th>
-                        <th data-sort-by="name">Game Name <span class="sort-arrow"></span></th>
-                        <th data-sort-by="website">Website <span class="sort-arrow"></span></th>
-                        <th data-sort-by="price">Price <span class="sort-arrow"></span></th>
-                        <th>Link</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    <!-- Results will be injected here -->
-                </tbody>
-            </table>
-        </div>
+                <div id="loading" class="hidden">Searching...</div>
+                <p id="noResults" class="hidden">No results found.</p>
 
-        <div id="pagination-controls" class="hidden" style="margin-top: 20px; text-align: center;">
-            <button id="prevPage">Previous</button>
-            <span id="pageInfo"></span>
-            <button id="nextPage">Next</button>
-        </div>
+                <div class="table-container">
+                    <div id="pagination-controls" class="hidden">
+                        <button id="prevPage" class="pagination-btn">Previous</button>
+                        <span id="pageInfo">Page 1 of 1</span>
+                        <button id="nextPage" class="pagination-btn">Next</button>
+                    </div>
+                    <table id="priceTable">
+                        <thead>
+                            <tr>
+                                <th>No.</th>
+                                <th>Image</th>
+                                <th data-sort-by="name" data-sort-order="asc">Game</th>
+                                <th data-sort-by="website" data-sort-order="asc">Store</th>
+                                <th data-sort-by="price" data-sort-order="asc">Price</th>
+                                <th>Link</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <!-- Results will be inserted here -->
+                        </tbody>
+                    </table>
+                    <div id="pagination-controls-bottom" class="hidden">
+                        <button id="prevPageBottom" class="pagination-btn">Previous</button>
+                        <span id="pageInfoBottom">Page 1 of 1</span>
+                        <button id="nextPageBottom" class="pagination-btn">Next</button>
+                    </div>
+                </div>
+            </div>
         </div>
     </main>
     <script src="script.js" defer></script>

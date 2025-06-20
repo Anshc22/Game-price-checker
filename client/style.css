@@ -1,334 +1,130 @@
 body {
     font-family: Arial, sans-serif;
     margin: 0;
-    padding: 0;
+    padding: 20px;
     background-color: #f4f4f4;
     color: #333;
 }
 
-header {
-    background-color: #333;
-    color: #fff;
-    padding: 1rem 0;
+h1 {
     text-align: center;
+    color: #0056b3;
+    margin-bottom: 30px;
 }
 
-main {
+.main-content-wrapper {
+    display: flex; /* Use flexbox for main layout */
+    gap: 20px; /* Space between sidebar and main content */
+    max-width: 1200px; /* Max width of your application */
+    margin: 0 auto; /* Center the wrapper */
+}
+
+#sidebar-filters {
+    flex: 0 0 220px; /* Fixed width for sidebar */
+    padding: 15px;
+    background-color: #fff;
+    border-radius: 8px;
+    box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+    align-self: flex-start; /* Align to the top of the flex container */
+    position: sticky; /* Makes it stick when scrolling */
+    top: 20px; /* Distance from top when sticky */
+    height: fit-content; /* Only take up necessary height */
+}
+
+#sidebar-filters h3 {
+    margin-top: 0;
+    margin-bottom: 15px;
+    color: #0056b3;
+    font-size: 1.1em;
+}
+
+.filter-checkbox {
+    display: flex;
+    align-items: center;
+    gap: 8px; /* Space between checkbox and icon */
+    margin-bottom: 12px; /* Compact spacing */
+}
+
+.filter-checkbox input[type="checkbox"] {
+    margin: 0; /* Reset default margins */
+    flex-shrink: 0; /* Prevent checkbox from shrinking */
+    width: 18px; /* Custom size */
+    height: 18px; /* Custom size */
+}
+
+#storeFilterContainer {
+    display: flex;
+    flex-direction: column; /* Stack checkboxes vertically */
+    gap: 10px; /* Space between checkboxes */
+    margin-bottom: 15px;
+}
+
+#storeFilterContainer label {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 0.95em;
+    cursor: pointer;
+}
+
+#storeFilterContainer input[type="checkbox"] {
+    transform: scale(1.1); /* Slightly larger checkboxes */
+}
+
+.filter-actions-sidebar {
+    display: flex;
+    flex-direction: column; /* Stack button and display vertically */
+    gap: 10px;
+    align-items: flex-start; /* Align items to the start */
+    margin-top: 15px;
+}
+
+#appliedFiltersDisplay {
+    font-size: 0.9em;
+    color: #555;
+    background-color: #e9ecef;
+    padding: 8px 10px;
+    border-radius: 5px;
+    width: fit-content;
+}
+
+.results-area {
+    flex-grow: 1; /* Takes up remaining space */
+    background-color: #fff;
     padding: 20px;
-    text-align: center;
+    border-radius: 8px;
+    box-shadow: 0 2px 5px rgba(0,0,0,0.1);
 }
 
-/* New styles below */
 .search-container {
-    margin-top: 20px;
-    margin-bottom: 30px; /* Added some space below the search bar */
+    display: flex;
+    gap: 10px;
+    margin-bottom: 20px;
+    align-items: center;
 }
 
 #gameNameInput {
+    flex-grow: 1;
     padding: 10px;
-    width: 300px;
     border: 1px solid #ddd;
-    border-radius: 4px;
-    margin-right: 10px;
-    font-size: 16px;
+    border-radius: 5px;
+    font-size: 1em;
 }
 
-#searchButton {
-    padding: 10px 20px;
-    background-color: #007bff;
-    color: white;
-    border: none;
-    border-radius: 4px;
-    cursor: pointer;
-    font-size: 16px;
-    transition: background-color 0.3s ease; /* Smooth hover effect */
-}
-
-#searchButton:hover {
-    background-color: #0056b3;
-}
-
-/* Styles for the results table */
-#results-container {
-    margin-top: 20px;
-    display: flex;
-    flex-direction: column; /* Changed to column to stack table and pagination */
-    align-items: center;   /* Center content horizontally */
-}
-
-#priceTable {
-    width: 80%; /* Adjust as needed */
-    border-collapse: collapse;
-    margin-top: 20px;
-    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
-    background-color: #fff;
-}
-
-#priceTable th, #priceTable td {
-    border: 1px solid #ddd;
-    padding: 12px;
-    text-align: left;
-}
-
-#priceTable th {
-    background-color: #e2e2e2;
-    font-weight: bold;
-    cursor: pointer; /* Indicate that headers are clickable */
-    position: relative; /* For absolute positioning of the arrow */
-    padding-right: 30px; /* Make space for the arrow */
-}
-
-#priceTable th:hover {
-    background-color: #d8d8d8; /* Hover effect for headers */
-}
-
-/* Sort arrow styling */
-.sort-arrow {
-    position: absolute;
-    right: 10px;
-    top: 50%;
-    transform: translateY(-50%);
-    width: 0;
-    height: 0;
-    border-left: 5px solid transparent;
-    border-right: 5px solid transparent;
-    border-bottom: 5px solid #555; /* Default: up arrow (no sort or unsorted) */
-    opacity: 0.4;
-}
-
-#priceTable th.asc .sort-arrow {
-    border-bottom: 5px solid #007bff; /* Up arrow for ascending */
-    opacity: 1;
-}
-
-#priceTable th.desc .sort-arrow {
-    border-top: 5px solid #007bff; /* Down arrow for descending */
-    border-bottom: none;
-    opacity: 1;
-}
-
-#priceTable td a {
-    color: #007bff;
-    text-decoration: none;
-}
-
-#priceTable td a:hover {
-    text-decoration: underline;
-}
-
-/* Styles for loading and no results messages */
-#loading, #noResults {
-    margin-top: 20px;
-    font-size: 1.1em;
-    color: #555;
-}
-
-.hidden {
-    display: none;
-}
-
-/* New styles for pagination */
-#pagination-controls {
-    margin-top: 20px;
-    display: flex;
-    align-items: center;
-    gap: 15px; /* Space between elements */
-}
-
-#pagination-controls button {
-    padding: 8px 15px;
-    background-color: #007bff;
-    color: white;
-    border: none;
-    border-radius: 4px;
-    cursor: pointer;
-    font-size: 14px;
-    transition: background-color 0.3s ease;
-}
-
-#pagination-controls button:hover:not(:disabled) {
-    background-color: #0056b3;
-}
-
-#pagination-controls button:disabled {
-    background-color: #cccccc;
-    cursor: not-allowed;
-}
-
-#pageInfo {
-    font-weight: bold;
-}
-
-.filters-container {
-    margin-top: 20px;
-    text-align: center;
-}
-
-#storeFilter {
-    padding: 8px;
-    border: 1px solid #ddd;
-    border-radius: 4px;
-    /* You might want to adjust height for multi-select if options are many */
-    height: auto; /* Or a fixed height like 120px */
-}
-
-#applyFilterButton {
-    padding: 8px 15px;
-    background-color: #28a745;
-    color: white;
-    border: none;
-    border-radius: 4px;
-    cursor: pointer;
-    margin-left: 10px;
-}
-
-/* Notion-like Filter Styles */
-.notion-filter-container {
-    position: relative;
-    display: inline-block;
-    margin-top: 20px;
-}
-
-.notion-button {
-    background-color: #fff;
-    color: #333;
-    border: 1px solid #ddd;
-    border-radius: 4px;
-    padding: 8px 12px;
-    font-size: 14px;
-    cursor: pointer;
-    display: inline-flex;
-    align-items: center;
-    gap: 8px;
-    transition: background-color 0.2s ease-in-out;
-}
-
-.notion-button:hover {
-    background-color: #f5f5f5;
-}
-
-.notion-dropdown-content {
-    display: block;
-    position: absolute;
-    background-color: #fefefe;
-    min-width: 200px;
-    box-shadow: 0px 8px 16px 0px rgba(0,0,0,0.2);
-    z-index: 1;
-    border-radius: 6px;
-    padding: 10px 0;
-    margin-top: 5px;
-    left: 0; /* Align left with the button */
-}
-
-.notion-dropdown-content.hidden {
-    display: none;
-}
-
-.notion-checkbox-item {
-    display: flex;
-    align-items: center;
-    padding: 8px 15px;
-    cursor: pointer;
-    font-size: 14px;
-    color: #333;
-}
-
-.notion-checkbox-item:hover {
-    background-color: #e9e9e9;
-}
-
-.notion-checkbox-item input[type="checkbox"] {
-    margin-right: 10px;
-    /* Custom checkbox styling (optional, more complex) */
-    -webkit-appearance: none;
-    -moz-appearance: none;
-    appearance: none;
-    width: 16px;
-    height: 16px;
-    border: 1px solid #bbb;
-    border-radius: 3px;
-    background-color: #fff;
-    cursor: pointer;
-    position: relative;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-}
-
-.notion-checkbox-item input[type="checkbox"]:checked {
-    background-color: #007bff; /* Blue for checked */
-    border-color: #007bff;
-}
-
-.notion-checkbox-item input[type="checkbox"]:checked::before {
-    content: '\2713'; /* Checkmark character */
-    font-size: 12px;
-    color: white;
-}
-
-.notion-dropdown-actions {
-    padding: 10px 15px 5px;
-    border-top: 1px solid #eee;
-    display: flex;
-    justify-content: flex-end;
-    gap: 8px;
-}
-
-.notion-button-small {
-    background-color: #007bff;
-    color: white;
-    border: none;
-    border-radius: 4px;
-    padding: 6px 10px;
-    font-size: 13px;
-    cursor: pointer;
-    transition: background-color 0.2s ease-in-out;
-}
-
-.notion-button-small:hover {
-    background-color: #0056b3;
-}
-
-.notion-button-small.clear-button {
-    background-color: #f0f0f0;
-    color: #333;
-}
-
-.notion-button-small.clear-button:hover {
-    background-color: #e0e0e0;
-}
-
-/* Add this to your style.css */
-
-.dropdown-content label.disabled-label {
-    color: #999; /* Grey out the text */
-    cursor: not-allowed; /* Change cursor to indicate it's not clickable */
-    opacity: 0.7; /* Slightly reduce opacity */
-    pointer-events: none; /* Crucial: Prevents clicks on the label and checkbox */
-}
-
-.dropdown-content label.disabled-label input[type="checkbox"] {
-    cursor: not-allowed;
-}
-
-/* Existing button styles (ensure consistency) */
+/* Button Styles */
 .button {
-    /* ... your existing button styles ... */
     padding: 10px 15px;
     border: none;
     border-radius: 5px;
     cursor: pointer;
     font-size: 1em;
     transition: background-color 0.2s ease;
-}
-
-.button-secondary {
-    background-color: #6c757d; /* A neutral color */
+    background-color: #007bff;
     color: white;
 }
 
-.button-secondary:hover {
-    background-color: #5a6268;
+.button:hover {
+    background-color: #0056b3;
 }
 
 .button-danger {
@@ -338,4 +134,295 @@ main {
 
 .button-danger:hover {
     background-color: #c82333;
+}
+
+/* No longer needed dropdown styles */
+/*
+.filter-controls { display: flex; align-items: center; gap: 10px; margin-bottom: 20px; position: relative; }
+.dropdown-content { display: none; position: absolute; background-color: #f9f9f9; min-width: 160px; box-shadow: 0px 8px 16px 0px rgba(0,0,0,0.2); z-index: 1; padding: 12px; border-radius: 5px; top: 100%; left: 0; margin-top: 5px;}
+.dropdown-content.hidden { display: none; }
+.dropdown-content label { display: block; margin-bottom: 8px; }
+.dropdown-content label:last-child { margin-bottom: 0; }
+.arrow-down { border: solid black; border-width: 0 2px 2px 0; display: inline-block; padding: 3px; transform: rotate(45deg); -webkit-transform: rotate(45deg); margin-left: 5px; }
+.filter-actions { display: flex; justify-content: space-between; margin-top: 10px; }
+*/
+
+/* Shared styles */
+.hidden {
+    display: none !important;
+}
+
+.loading {
+    text-align: center;
+    margin-top: 20px;
+    font-style: italic;
+    color: #666;
+}
+
+#noResults {
+    text-align: center;
+    margin-top: 20px;
+    color: #dc3545;
+    font-weight: bold;
+}
+
+.table-container {
+    overflow-x: auto;
+    margin-top: 20px;
+    padding-top: 0;
+    padding-bottom: 0;
+}
+
+#priceTable {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 10px;
+}
+
+#priceTable th, #priceTable td {
+    border: 1px solid #ddd;
+    padding: 10px;
+    text-align: left;
+}
+
+#priceTable th {
+    background-color: #e9ecef;
+    cursor: pointer;
+    position: relative; /* For sort indicators */
+}
+
+#priceTable th.asc::after {
+    content: ' ▲';
+}
+
+#priceTable th.desc::after {
+    content: ' ▼';
+}
+
+#priceTable tr:nth-child(even) {
+    background-color: #f2f2f2;
+}
+
+#priceTable tr:hover {
+    background-color: #e0e0e0;
+}
+
+#priceTable a {
+    color: #007bff;
+    text-decoration: none;
+}
+
+#priceTable a:hover {
+    text-decoration: underline;
+}
+
+.pagination-controls {
+    margin-bottom: 20px;
+    padding-bottom: 0;
+    display: flex;
+    justify-content: flex-start;
+    align-items: center;
+    gap: 10px;
+}
+
+.pagination-controls button {
+    padding: 8px 15px;
+    background-color: #007bff;
+    color: white;
+    border: none;
+    border-radius: 5px;
+    cursor: pointer;
+}
+
+.pagination-controls button:disabled {
+    background-color: #cccccc;
+    cursor: not-allowed;
+}
+
+.pagination-controls span {
+    font-weight: bold;
+}
+
+/* Disabled label style for checkboxes */
+label.disabled-label {
+    cursor: not-allowed;
+    pointer-events: none; /* Make sure nothing inside is interactive */
+}
+
+label.disabled-label input[type="checkbox"] {
+    cursor: not-allowed;
+}
+
+.store-icon {
+    width: 24px; /* Adjust as needed */
+    height: 24px; /* Adjust as needed */
+    vertical-align: middle;
+    margin-right: 5px;
+}
+
+/* Filter store icons */
+.filter-store-icon {
+    max-width: 80px;  /* Set a max-width for wider logos */
+    height: 24px;     /* Maintain a consistent height */
+    object-fit: contain; /* Ensure logo scales nicely without distortion */
+    display: block; /* Remove extra space below image */
+}
+
+.store-icon-label {
+    display: flex;
+    align-items: center; /* Vertically center the icon */
+    cursor: pointer;
+}
+
+.store-icon-label:hover {
+    opacity: 0.8;
+}
+
+/* Disabled label style for checkboxes */
+label.disabled-label,
+.disabled-label .filter-store-icon {
+    color: #999;
+    cursor: not-allowed;
+    opacity: 0.6;
+}
+
+/* Table store icons */
+.store-icon {
+    width: 24px;
+    height: 24px;
+    vertical-align: middle;
+    margin-right: 5px;
+    object-fit: contain;
+}
+
+.disabled-label .filter-store-icon {
+    opacity: 0.5;
+    filter: grayscale(100%);
+}
+
+.pagination-btn {
+    padding: 10px 20px;
+    background-color: #007bff;
+    color: white;
+    border: none;
+    border-radius: 6px;
+    font-size: 1.1em;
+    font-weight: 500;
+    margin: 0 8px;
+    cursor: pointer;
+    transition: background 0.2s, box-shadow 0.2s;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.08);
+}
+.pagination-btn:hover:not(:disabled) {
+    background-color: #0056b3;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.12);
+}
+.pagination-btn:disabled {
+    background-color: #cccccc;
+    color: #888;
+    cursor: not-allowed;
+    box-shadow: none;
+}
+
+.filter-store-icon[alt="Xbox Game Pass"] {
+    height: 32px !important;
+    max-width: 110px !important;
+}
+
+.filter-result-count {
+    font-size: 1em;
+    font-weight: bold;
+    color: #007bff;
+    margin-left: 6px;
+    background: #e9ecef;
+    border-radius: 8px;
+    padding: 2px 8px;
+    vertical-align: middle;
+    display: inline-block;
+}
+
+.store-icon[alt="Xbox Game Pass Logo"] {
+    height: 32px !important;
+    max-width: 110px !important;
+    object-fit: contain;
+    display: inline-block;
+}
+
+#pagination-controls-bottom {
+    margin-top: 20px;
+    padding-top: 0;
+    display: flex;
+    justify-content: flex-start;
+    align-items: center;
+    gap: 10px;
+}
+
+.game-cover-thumb {
+    width: 80px;
+    height: 40px;
+    object-fit: cover;
+    border-radius: 6px;
+    border: 1px solid #e0e0e0;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+    display: block;
+    margin: 0 auto;
+}
+
+/* Increase all product/game images by 30% */
+.product-item-photo img,
+.search_capsule img,
+.ProductCard-module__boxArt___-2vQY,
+img[selenium-id='productTileGameCover'],
+img.css-1ae5wog {
+  width: 130% !important;
+  height: 130% !important;
+  max-width: none !important;
+  max-height: none !important;
+}
+
+/* Ensure table cells accommodate larger images */
+td img, th img {
+  display: block;
+  margin: 0 auto;
+}
+td, th {
+  min-width: 15px;
+  min-height: 15px;
+  padding: 1px 2px;
+  vertical-align: middle;
+  text-align: center;
+  box-sizing: border-box;
+}
+
+/* Arrow for filter stores box */
+.filter-stores-toggle-arrow {
+  position: absolute;
+  top: 12px;
+  right: 16px;
+  width: 24px;
+  height: 24px;
+  cursor: pointer;
+  color: #2196f3;
+  fill: #2196f3;
+  transition: transform 0.3s cubic-bezier(0.4,0.0,0.2,1);
+  z-index: 2;
+}
+.filter-stores-toggle-arrow.collapsed {
+  transform: rotate(-90deg);
+}
+.filter-stores-toggle-arrow.expanded {
+  transform: rotate(0deg);
+}
+
+.filter-stores-container {
+  position: relative;
+  overflow: hidden;
+  transition: max-height 0.4s cubic-bezier(0.4,0.0,0.2,1), opacity 0.3s;
+  max-height: 500px;
+  opacity: 1;
+}
+.filter-stores-container.filter-stores-collapsed {
+  max-height: 0;
+  opacity: 0;
+  pointer-events: none;
 }

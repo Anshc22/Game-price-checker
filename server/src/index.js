@@ -2,8 +2,8 @@ const express = require('express');
 const cors = require('cors');
 const axios = require('axios');
 const cheerio = require('cheerio');
-const puppeteer = require('puppeteer-core');
-const chromium = require('@sparticuz/chromium');
+const puppeteer = require('puppeteer');
+const pLimit = require('p-limit').default;
 
 const app = express();
 const port = process.env.PORT || 3000;
@@ -11,7 +11,18 @@ const port = process.env.PORT || 3000;
 app.use(cors());
 app.use(express.json());
 
-let browserInstance; // Declare a variable to hold the single browser instance
+// Store icon URLs - Updated with more reliable sources
+const storeIcons = {
+    'Steam': 'https://community.cloudflare.steamstatic.com/public/shared/images/responsive/share_steam_logo.png',
+    'GOG': 'https://upload.wikimedia.org/wikipedia/commons/d/d7/GOG.com_logo.png',
+    'Eneba': 'https://1000logos.net/wp-content/uploads/2021/05/Eneba-Logo.png',
+    'CDKeys': 'https://upload.wikimedia.org/wikipedia/commons/f/f3/CD_Keys.png',
+    'Kinguin': 'https://upload.wikimedia.org/wikipedia/commons/8/8a/Kinguin_logo.png', // Alternative Kinguin logo
+    'Epic Games': 'https://upload.wikimedia.org/wikipedia/commons/5/57/Epic_games_store_logo.svg',
+    'Xbox Game Pass': 'https://upload.wikimedia.org/wikipedia/commons/d/d3/Xbox_Game_Pass_logo_-_colored_version.svg',
+};
+
+let browserInstance = null; // Shared Puppeteer browser instance
 
 // Helper function to normalize price strings
 function normalizePrice(priceStr) {
@@ -45,7 +56,7 @@ app.get('/', (req, res) => {
   res.send('Hello from the backend!');
 });
 
-// Updated searchSteam function to accept and use the shared browser instance
+// Updated searchSteam function to extract all info from the search results page only
 async function searchSteam(gameName, exclusionKeywords, userWantsExcludedContent, browser) {
   const results = [];
   let page;
@@ -56,7 +67,7 @@ async function searchSteam(gameName, exclusionKeywords, userWantsExcludedContent
     page = await browser.newPage(); // Use the shared browser instance
     await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36');
 
-    await page.goto(searchUrl, { waitUntil: 'domcontentloaded', timeout: 60000 });
+    await page.goto(searchUrl, { waitUntil: 'domcontentloaded', timeout: 75000 });
     
     // Check for "0 results match your search."
     const noResultsText = await page.evaluate(() => {
@@ -69,131 +80,86 @@ async function searchSteam(gameName, exclusionKeywords, userWantsExcludedContent
         return [];
     }
 
-    await page.waitForSelector('#search_resultsRows .search_result_row', { timeout: 60000 });
+    await page.waitForSelector('#search_resultsRows .search_result_row', { timeout: 75000 });
 
     const html = await page.content();
     const $ = cheerio.load(html);
 
-    const gameLinks = [];
-    $('#search_resultsRows .search_result_row').each((i, element) => {
-      if (gameLinks.length >= 10) {
-        return false;
+    // Collect lists for each field
+    const titleSpans = $('#search_resultsRows .search_result_row .title').toArray();
+    const priceDivs = $('#search_resultsRows .search_result_row .discount_final_price').toArray();
+    const linkAs = $('#search_resultsRows .search_result_row').toArray(); // The row itself is the <a>
+    const imgTags = $('#search_resultsRows .search_result_row .col.search_capsule img').toArray();
+
+    const maxLen = Math.max(titleSpans.length, priceDivs.length, linkAs.length, imgTags.length, 8);
+    for (let i = 0; i < maxLen && i < 8; i++) {
+      const name = titleSpans[i] ? $(titleSpans[i]).text().trim() : '';
+      const link = linkAs[i] ? $(linkAs[i]).attr('href') : '';
+      let priceText = priceDivs[i] ? $(priceDivs[i]).text().trim() : '';
+      let price = 0;
+      if (priceText === '' || priceText.toLowerCase().includes('free')) {
+        price = 0;
+      } else {
+        price = parseFloat(priceText.replace(/[^\d.,]/g, '').replace(',', ''));
+        if (isNaN(price)) price = 0;
       }
-      const name = $(element).find('.title').text().trim();
-      const link = $(element).attr('href');
-      if (name && link) {
-        gameLinks.push({ name, link });
-      }
-    });
-
-    console.log(`Found ${gameLinks.length} potential Steam games. Now visiting individual pages concurrently for prices...`);
-
-    const pricePromises = gameLinks.map(async (game) => {
-      // Early exclusion check for individual pages
-      const lowerCaseGameNameInList = game.name.toLowerCase();
-      if (!userWantsExcludedContent && exclusionKeywords.some(keyword => lowerCaseGameNameInList.includes(keyword))) {
-          console.log(`Skipping Steam game page for excluded content: "${game.name}"`);
-          return { name: game.name, price: 'N/A', website: 'Steam', link: game.link }; // Return N/A if skipped
-      }
-
-      let gamePage;
-      try {
-        gamePage = await browser.newPage(); // Use the shared browser instance
-        await gamePage.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36');
-        
-        await gamePage.goto(game.link, { waitUntil: 'domcontentloaded', timeout: 60000 });
-        
-        // Increased timeout to 60 seconds for individual game page price selectors
-        await gamePage.waitForSelector('#game_area_purchase_game_wrapper, .game_area_purchase_game, .game_purchase_action, .game_purchase_price.price, meta[itemprop="price"]', { timeout: 60000 }); 
-        
-        const gamePageHtml = await gamePage.content();
-        const $$ = cheerio.load(gamePageHtml);
-
-        let priceText = 'N/A';
-        let purchaseSection = $$('#game_area_purchase_game_wrapper');
-        if (purchaseSection.length === 0) {
-            purchaseSection = $$('.game_area_purchase_game').first();
-        }
-        // Fallback to game_purchase_action if previous sections not found/empty
-        if (purchaseSection.length === 0) {
-            purchaseSection = $$('.game_purchase_action').first();
+      let image = imgTags[i] ? $(imgTags[i]).attr('src') || '' : '';
+      results.push({
+        name,
+        price,
+        website: 'Steam',
+        link,
+        icon: storeIcons['Steam'],
+        image
+      });
         }
 
-        if (purchaseSection.length > 0) {
-            const finalPriceElement = purchaseSection.find('.discount_final_price').first();
-            const originalPriceElement = purchaseSection.find('.discount_original_price').first();
-            const standardPriceElement = purchaseSection.find('.game_purchase_price.price').first();
-            const freePriceElement = purchaseSection.find('.game_purchase_price.price_free');
-            const dataPriceFinalAttribute = purchaseSection.find('.discount_block[data-price-final]').first().attr('data-price-final');
-            const gamePurchasePriceDataFinal = standardPriceElement.attr('data-price-final');
-            const metaPriceContent = $$('meta[itemprop="price"]').first().attr('content');
+    // Apply the same exact/secondary match logic as other stores
+    const lowerCaseGameName = gameName.toLowerCase();
+    const significantWordsQuery = getSignificantWords(lowerCaseGameName);
+    const filteredResults = [];
 
-            // --- DEBUGGING LOGS FOR STEAM PRICE EXTRACTION ---
-            console.log(`Steam Debug for "${game.name}" (${game.link}):`);
-            console.log(`  finalPriceElement text: ${finalPriceElement.text().trim()}`);
-            console.log(`  originalPriceElement text: ${originalPriceElement.text().trim()}`);
-            console.log(`  standardPriceElement text: ${standardPriceElement.text().trim()}`);
-            console.log(`  freePriceElement length: ${freePriceElement.length}`);
-            console.log(`  dataPriceFinalAttribute: ${dataPriceFinalAttribute}`);
-            console.log(`  gamePurchasePriceDataFinal (from .game_purchase_price.price): ${gamePurchasePriceDataFinal}`);
-            console.log(`  metaPriceContent: ${metaPriceContent}`);
-            console.log(`  purchaseSection text (excerpt): ${purchaseSection.text().trim().substring(0, 100)}...`);
-            // --- END DEBUGGING LOGS ---
+    // Escape special regex characters in the game name for a safe regex construction
+    const escapedGameName = lowerCaseGameName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const strictRegexWithBoundary = new RegExp(`\\b${escapedGameName}\\b`, 'i');
 
-            // Prioritize metaPriceContent first as it's often a direct numerical value
-            if (metaPriceContent) { 
-                priceText = metaPriceContent;
-            } else if (dataPriceFinalAttribute) {
-                priceText = (parseInt(dataPriceFinalAttribute) / 100).toFixed(2);
-            } else if (gamePurchasePriceDataFinal) {
-                priceText = (parseInt(gamePurchasePriceDataFinal) / 100).toFixed(2);
-            } else if (finalPriceElement.length > 0 && finalPriceElement.text().trim() !== '') {
-                priceText = finalPriceElement.text().trim();
-            } else if (originalPriceElement.length > 0 && originalPriceElement.text().trim() !== '') {
-                priceText = originalPriceElement.text().trim();
-            } else if (standardPriceElement.length > 0 && standardPriceElement.text().trim() !== '') {
-                priceText = standardPriceElement.text().trim();
-            } else if (freePriceElement.length > 0) {
-                priceText = 'Free';
-            }
-             // Final fallback: try to get any text from the purchase action area
-            if (priceText === 'N/A' || priceText === '') {
-                const actionPriceText = purchaseSection.text().trim();
-                if (actionPriceText) {
-                    priceText = actionPriceText;
+    const primaryMatches = results.filter(result => {
+      const lowerCaseResultName = result.name.toLowerCase();
+      const originalResultName = result.name;
+      if (lowerCaseResultName === lowerCaseGameName) {
+        return true;
+      }
+      if (strictRegexWithBoundary.test(originalResultName)) {
+        const queryHasApostrophe = lowerCaseGameName.includes("'");
+        const queryHasHyphen = lowerCaseGameName.includes("-");
+        if (!queryHasApostrophe && originalResultName.match(new RegExp(`${escapedGameName}'`, 'i'))) {
+          return false;
+        }
+        if (!queryHasHyphen && originalResultName.match(new RegExp(`-${escapedGameName}`, 'i'))) {
+          return false;
+        }
+        if (!queryHasHyphen && originalResultName.match(new RegExp(String.raw`${escapedGameName}-`, 'i'))) {
+          return false;
+        }
+        return true;
                 }
-            }
-        }
-
-        const price = normalizePrice(priceText);
-        console.log(`Steam Debug for "${game.name}": Final Raw PriceText="${priceText}", Normalized Price="${price}"`); // Final debug log
-
-        return {
-          name: game.name,
-          price: price,
-          website: 'Steam',
-          link: game.link
-        };
-
-      } catch (gamePageError) {
-        console.error(`Error scraping price for "${game.name}" from ${game.link}:`, gamePageError.message);
-        return {
-          name: game.name,
-          price: 'N/A',
-          website: 'Steam',
-          link: game.link
-        };
-      } finally {
-        if (gamePage) {
-          await gamePage.close(); // Close the individual page
-        }
-      }
+      return false;
     });
-
-    const results = await Promise.all(pricePromises);
-
-    console.log('Steam Scraped Results:', results);
-    return results;
+    if (primaryMatches.length > 0) {
+      filteredResults.push(...primaryMatches);
+    } else {
+      // Secondary match: all significant words present
+      const secondaryMatches = results.filter(result => {
+        const lowerCaseResultName = result.name.toLowerCase();
+        const significantWordsResult = getSignificantWords(lowerCaseResultName);
+        const isSecondaryExactMatch = significantWordsQuery.every(word => significantWordsResult.includes(word));
+        return isSecondaryExactMatch;
+      });
+      if (secondaryMatches.length > 0) {
+        filteredResults.push(...secondaryMatches);
+      }
+    }
+    return filteredResults;
   } catch (error) {
     console.error('Error in searchSteam function:', error);
     return [];
@@ -217,7 +183,7 @@ async function searchEneba(gameName, browser) {
     page = await browser.newPage(); // Use the shared browser instance
     await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36');
 
-    await page.goto(searchUrl, { waitUntil: 'domcontentloaded', timeout: 60000 });
+    await page.goto(searchUrl, { waitUntil: 'domcontentloaded', timeout: 75000 });
     
     // Check for "Sorry, we could not find any match to:"
     const noResultsDivText = await page.evaluate(() => {
@@ -231,27 +197,53 @@ async function searchEneba(gameName, browser) {
     }
 
     // Wait for the product card container
-    await page.waitForSelector('.pFaGHa', { timeout: 60000 });
+    await page.waitForSelector('.pFaGHa', { timeout: 75000 });
 
     const html = await page.content();
     const $ = cheerio.load(html);
 
+    const enebaGameLinks = [];
     $('.pFaGHa').each((i, element) => {
-      const name = $(element).find('.GZjXOw').attr('title'); // title attribute holds the full name
+      const name = $(element).find('.GZjXOw').attr('title');
       const link = `https://www.eneba.com${$(element).find('.GZjXOw').attr('href')}`;
-      let priceText = $(element).find('.L5ErLT').text().trim(); // Selector for the price
-
+      let priceText = $(element).find('.L5ErLT').text().trim();
       if (name && priceText && link) {
-        // If Eneba's price text contains multiple numbers due to sale, take the last one
-        const price = normalizePrice(priceText);
-        results.push({
-          name: name,
-          price: price,
-          website: 'Eneba',
-          link: link
-        });
+        enebaGameLinks.push({ name, link, priceText });
       }
     });
+    const enebaResults = await Promise.all(enebaGameLinks.map(async ({ name, link, priceText }) => {
+      const price = normalizePrice(priceText);
+      let image = '';
+      let gamePage;
+      try {
+        gamePage = await browser.newPage();
+        await gamePage.goto(link, { waitUntil: 'domcontentloaded', timeout: 75000 });
+        const gameHtml = await gamePage.content();
+        const $$ = cheerio.load(gameHtml);
+        image = $$('picture img').attr('src') || '';
+        if (!image) {
+          // Try srcset for higher resolution if available
+          const srcset = $$('picture img').attr('srcset');
+          if (srcset) {
+            // Use the last (highest-res) image in the srcset
+            image = srcset.split(',').pop().split(' ')[0].trim();
+          }
+        }
+      } catch (err) {
+        console.error(`Error scraping image for "${name}" from ${link}:`, err.message);
+      } finally {
+        if (gamePage) await gamePage.close();
+      }
+      return {
+        name,
+        price,
+        website: 'Eneba',
+        link,
+        icon: storeIcons['Eneba'],
+        image
+      };
+    }));
+    results.push(...enebaResults);
     console.log('Eneba Scraped Results:', results);
     return results;
   } catch (error) {
@@ -265,70 +257,219 @@ async function searchEneba(gameName, browser) {
   }
 }
 
-// Function to scrape CDKeys for game prices
-// Updated to accept and use the shared browser instance
+// Function to scrape CDKeys for game prices (new robust logic)
 async function searchCDKeys(gameName, browser) {
   let page;
-  const results = []; // Moved declaration to function scope
+  const results = [];
   try {
     const searchUrl = `https://www.cdkeys.com/catalogsearch/result/?q=${encodeURIComponent(gameName)}`;
     console.log('Attempting to scrape CDKeys from URL:', searchUrl);
 
-    page = await browser.newPage(); // Use the shared browser instance
-    // Set a realistic User-Agent to mimic a browser
+    page = await browser.newPage();
     await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36');
 
-    // Increase navigation timeout and wait for a specific product item selector
-    await page.goto(searchUrl, {
-      waitUntil: 'networkidle2', // Changed to networkidle2 for better content loading
-      timeout: 120000 // Increased timeout to 120 seconds (already 120)
+    await page.setExtraHTTPHeaders({
+      'Accept-Language': 'en-US,en;q=0.9',
+      'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
     });
 
-    // Check for "No products for query"
-    const noResultsDivText = await page.evaluate(() => {
-        const element = document.querySelector('.no-results');
-        return element ? element.textContent.trim() : null;
-    });
-
-    if (noResultsDivText && noResultsDivText.includes('No products for query')) {
-        console.log(`CDKeys: No results found for "${gameName}". Halting search.`);
-        return [];
+    await page.goto(searchUrl, { waitUntil: 'domcontentloaded', timeout: 75000 });
+    // Wait for results to render
+    try {
+      await page.waitForSelector('div.p-2.5.text-white.font-semibold.uppercase.min-h-[68px].product-item-link, div.product.photo.product-item-photo', { timeout: 3000 });
+      await new Promise(resolve => setTimeout(resolve, 200)); // Wait 0.2 second for dynamic content
+    } catch (e) {
+      console.log('CDKeys: No result selector found after waiting.');
     }
 
-    // Wait for at least one product item to appear, targeting a more specific element within it
-    await page.waitForSelector('.product-info p[itemprop="name"] a', { timeout: 60000 }); // Increased to 60 seconds
+    let html = await page.content();
+    let $ = cheerio.load(html);
 
-    const html = await page.content();
-    const $ = cheerio.load(html);
+    // Collect lists for each field
+    const nameDivs = $("div.flex-grow.flex.flex-col[itemprop='item'][data-name]").toArray();
+    const priceSpans = $("span[itemprop='lowPrice'].after_special").toArray();
+    const productCards = $("div.product.photo.product-item-photo.block.relative").toArray();
+    const linkAs = $("div.product.photo.product-item-photo a").toArray();
 
-    $('.product-info').each((i, element) => { // Iterate over .product-info as the main item container
-      // New selectors based on provided HTML snippet
-      const nameElement = $(element).find('p[itemprop="name"] a');
-      const name = nameElement.text().trim();
-      const link = nameElement.attr('href');
-      
-      let priceText = '';
-      const metaPriceElement = $(element).find('meta[itemprop="price"]');
-      const spanPriceElement = $(element).find('span[itemprop="lowPrice"]');
+    console.log(`CDKeys: Found ${nameDivs.length} names, ${priceSpans.length} prices, ${linkAs.length} links, ${productCards.length} product cards.`);
 
-      if (metaPriceElement.length > 0 && metaPriceElement.attr('content')) {
-          priceText = metaPriceElement.attr('content');
-      } else if (spanPriceElement.length > 0) {
-          priceText = spanPriceElement.text().trim();
+    const maxLen = Math.max(nameDivs.length, priceSpans.length, linkAs.length, productCards.length);
+    for (let i = 0; i < maxLen; i++) {
+      // Name from data-name attribute
+      const name = nameDivs[i] ? $(nameDivs[i]).attr('data-name')?.trim() || '' : '';
+      // Price
+      let priceText = priceSpans[i] ? $(priceSpans[i]).text().trim() : '';
+      let price = 0;
+      if (priceText === '' || priceText.toLowerCase().includes('free')) {
+        price = 0;
+      } else {
+        price = parseFloat(priceText.replace(/[^\d.,]/g, '').replace(',', ''));
+        if (isNaN(price)) price = 0;
       }
-
-      if (name && priceText && link) {
-        const price = normalizePrice(priceText);
+      // Link
+      let link = linkAs[i] ? $(linkAs[i]).attr('href') : '';
+      // Image: only consider the first div.image-zoom-hover under the product card
+      let image = '';
+      if (productCards[i]) {
+        const zoomDiv = $(productCards[i]).find('div.image-zoom-hover').first();
+        const img = zoomDiv.find('img').first();
+        if (img.length) {
+          let src = img.attr('src');
+          let dataSrc = img.attr('data-src');
+          let dataImage = img.attr('data-image');
+          let srcset = img.attr('srcset');
+          if (src && src !== 'true' && !src.startsWith('data:') && src.trim() !== '') {
+            image = src;
+          } else if (dataSrc && !dataSrc.startsWith('data:') && dataSrc.trim() !== '') {
+            image = dataSrc;
+          } else if (dataImage && !dataImage.startsWith('data:') && dataImage.trim() !== '') {
+            image = dataImage;
+          } else if (srcset && srcset.trim() !== '') {
+            image = srcset.split(',').pop().split(' ')[0].trim();
+          }
+          let style = img.attr('style') || '';
+          let bgMatch = style.match(/background-image:\s*url\(['"]?(.*?)['"]?\)/i);
+          if (bgMatch && bgMatch[1] && !bgMatch[1].startsWith('data:')) {
+            image = bgMatch[1];
+          }
+        }
+      }
+      if (image && !image.startsWith('http')) {
+        image = `https://www.cdkeys.com${image}`;
+      }
+      if (name || link) {
         results.push({
-          name: name,
-          price: price,
+          name,
+          price,
           website: 'CDKeys',
-          link: link
+          link,
+          icon: storeIcons['CDKeys'],
+          image
         });
       }
+    }
+
+    if (results.length === 0) {
+      // Try again with a more relaxed query (first significant word)
+      const significantWords = getSignificantWords(gameName);
+      if (significantWords.length > 0) {
+        const relaxedQuery = significantWords[0];
+        const relaxedUrl = `https://www.cdkeys.com/catalogsearch/result/?q=${encodeURIComponent(relaxedQuery)}`;
+        console.log(`CDKeys: No results for full query, retrying with relaxed query: ${relaxedQuery}`);
+        await page.goto(relaxedUrl, { waitUntil: 'domcontentloaded', timeout: 75000 });
+        // Wait for results to render
+        try {
+          await page.waitForSelector('div.p-2.5.text-white.font-semibold.uppercase.min-h-[68px].product-item-link, div.product.photo.product-item-photo', { timeout: 3000 });
+          await new Promise(resolve => setTimeout(resolve, 200)); // Wait 0.2 second for dynamic content
+        } catch (e) {
+          console.log('CDKeys: No result selector found after waiting (relaxed query).');
+        }
+        html = await page.content();
+        $ = cheerio.load(html);
+        const nameDivs2 = $("div.flex-grow.flex.flex-col[itemprop='item'][data-name]").toArray();
+        const priceSpans2 = $("span[itemprop='lowPrice'].after_special").toArray();
+        const productCards2 = $("div.product.photo.product-item-photo.block.relative").toArray();
+        const linkAs2 = $("div.product.photo.product-item-photo a").toArray();
+        const maxLen2 = Math.max(nameDivs2.length, priceSpans2.length, linkAs2.length, productCards2.length);
+        for (let i = 0; i < maxLen2; i++) {
+          const name = nameDivs2[i] ? $(nameDivs2[i]).attr('data-name')?.trim() || '' : '';
+          let priceText = priceSpans2[i] ? $(priceSpans2[i]).text().trim() : '';
+          let price = 0;
+          if (priceText === '' || priceText.toLowerCase().includes('free')) {
+            price = 0;
+          } else {
+            price = parseFloat(priceText.replace(/[^\d.,]/g, '').replace(',', ''));
+            if (isNaN(price)) price = 0;
+          }
+          let link = linkAs2[i] ? $(linkAs2[i]).attr('href') : '';
+          let image = '';
+          if (productCards2[i]) {
+            const zoomDiv = $(productCards2[i]).find('div.image-zoom-hover').first();
+            const img = zoomDiv.find('img').first();
+            if (img.length) {
+              let src = img.attr('src');
+              let dataSrc = img.attr('data-src');
+              let dataImage = img.attr('data-image');
+              let srcset = img.attr('srcset');
+              if (src && src !== 'true' && !src.startsWith('data:') && src.trim() !== '') {
+                image = src;
+              } else if (dataSrc && !dataSrc.startsWith('data:') && dataSrc.trim() !== '') {
+                image = dataSrc;
+              } else if (dataImage && !dataImage.startsWith('data:') && dataImage.trim() !== '') {
+                image = dataImage;
+              } else if (srcset && srcset.trim() !== '') {
+                image = srcset.split(',').pop().split(' ')[0].trim();
+              }
+              let style = img.attr('style') || '';
+              let bgMatch = style.match(/background-image:\s*url\(['"]?(.*?)['"]?\)/i);
+              if (bgMatch && bgMatch[1] && !bgMatch[1].startsWith('data:')) {
+                image = bgMatch[1];
+              }
+            }
+          }
+          if (image && !image.startsWith('http')) {
+            image = `https://www.cdkeys.com${image}`;
+          }
+          if (name || link) {
+            results.push({
+        name,
+        price,
+        website: 'CDKeys',
+        link,
+        icon: storeIcons['CDKeys'],
+        image
+            });
+          }
+        }
+      }
+    }
+
+    // Apply the same exact/secondary match logic as other stores
+    const lowerCaseGameName = gameName.toLowerCase();
+    const significantWordsQuery = getSignificantWords(lowerCaseGameName);
+    const filteredResults = [];
+
+    // Escape special regex characters in the game name for a safe regex construction
+    const escapedGameName = lowerCaseGameName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const strictRegexWithBoundary = new RegExp(`\\b${escapedGameName}\\b`, 'i');
+
+    const primaryMatches = results.filter(result => {
+      const lowerCaseResultName = result.name.toLowerCase();
+      const originalResultName = result.name;
+      if (lowerCaseResultName === lowerCaseGameName) {
+        return true;
+      }
+      if (strictRegexWithBoundary.test(originalResultName)) {
+        const queryHasApostrophe = lowerCaseGameName.includes("'");
+        const queryHasHyphen = lowerCaseGameName.includes("-");
+        if (!queryHasApostrophe && originalResultName.match(new RegExp(`${escapedGameName}'`, 'i'))) {
+          return false;
+        }
+        if (!queryHasHyphen && originalResultName.match(new RegExp(`-${escapedGameName}`, 'i'))) {
+          return false;
+        }
+        if (!queryHasHyphen && originalResultName.match(new RegExp(String.raw`${escapedGameName}-`, 'i'))) {
+          return false;
+        }
+        return true;
+      }
+      return false;
     });
-    console.log('CDKeys Scraped Results:', results);
-    return results;
+    if (primaryMatches.length > 0) {
+      filteredResults.push(...primaryMatches);
+    } else {
+      // Secondary match: all significant words present
+      const secondaryMatches = results.filter(result => {
+        const lowerCaseResultName = result.name.toLowerCase();
+        const significantWordsResult = getSignificantWords(lowerCaseResultName);
+        const isSecondaryExactMatch = significantWordsQuery.every(word => significantWordsResult.includes(word));
+        return isSecondaryExactMatch;
+      });
+      if (secondaryMatches.length > 0) {
+        filteredResults.push(...secondaryMatches);
+      }
+    }
+    return filteredResults;
   } catch (error) {
     console.error('Error scraping CDKeys for "' + gameName + '":', error);
     return [];
@@ -354,39 +495,42 @@ async function searchKinguin(gameName, browser) {
     await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36');
 
     // Increased timeout for page navigation and changed waitUntil strategy
-    await page.goto(searchUrl, { waitUntil: 'networkidle2', timeout: 120000 }); // Increased to 120 seconds (already 120)
+    await page.goto(searchUrl, { waitUntil: 'networkidle2', timeout: 75000 }); // Increased to 75 seconds
     
     // Wait for an element that indicates a product card is present, or a no-results message
     // Based on the provided HTML, 'h3[itemprop="name"] a' is a good indicator within a product card
     // Increased timeout for waiting for the selector
-    await page.waitForSelector('h3[itemprop="name"] a', { timeout: 60000 }); // Increased to 60 seconds
+    await page.waitForSelector('h3[itemprop="name"] a', { timeout: 75000 }); // Increased to 75 seconds
 
     const html = await page.content();
     const $ = cheerio.load(html);
 
-    $('div[class*="sc-bTfYFJ"]').each((i, element) => { 
-      // Extract name and link from the <a> tag within the h3
-      const nameLinkElement = $(element).find('h3[itemprop="name"] a');
-      const name = nameLinkElement.text().trim();
-      const link = nameLinkElement.attr('href');
-
-      let priceText = '';
-      // Prioritize the 'content' attribute of 'span[itemprop="lowPrice"]'
-      const lowPriceSpan = $(element).find('span[itemprop="lowPrice"]');
-      if (lowPriceSpan.length > 0) {
-        priceText = lowPriceSpan.attr('content') || lowPriceSpan.text().trim(); // Get content attribute first, then text
-      }
-
+    const kinguinGameLinks = [];
+    $('.sc-iukxot').each((i, element) => {
+      // Image
+      const image = $(element).find('div[aria-label^="Go to the product page"] img').attr('src') || '';
+      // Name and link
+      const nameElement = $(element).find('h3[itemprop="name"] a');
+      const name = nameElement.text().trim();
+      const link = nameElement.attr('href');
+      // Price
+      const priceText = $(element).find('span.price-mobile[itemprop="lowPrice"]').attr('content') || $(element).find('span.price-mobile[itemprop="lowPrice"]').text().trim();
       if (name && priceText && link) {
-        const price = normalizePrice(priceText);
-        results.push({
-          name: name,
-          price: price,
-          website: 'Kinguin',
-          link: link
-        });
+        kinguinGameLinks.push({ name, link, priceText, image });
       }
     });
+    const kinguinResults = kinguinGameLinks.map(({ name, link, priceText, image }) => {
+      const price = normalizePrice(priceText);
+      return {
+        name,
+        price,
+        website: 'Kinguin',
+        link,
+        icon: storeIcons['Kinguin'],
+        image
+      };
+    });
+    results.push(...kinguinResults);
     console.log('Kinguin Scraped Results:', results);
     return results;
   } catch (error) {
@@ -401,55 +545,120 @@ async function searchKinguin(gameName, browser) {
 }
 
 // Function to scrape Epic Games Store for game prices
-// Updated to accept and use the shared browser instance
 async function searchEpicGames(gameName, browser) {
   let page;
   const results = [];
   try {
-    const searchUrl = `https://store.epicgames.com/en-US/browse?q=${encodeURIComponent(gameName)}&sortBy=relevancy&sortDir=DESC&category=Game&count=40&start=0`;
+    // Use the provided URL format for Epic Games search
+    const searchUrl = `https://store.epicgames.com/en-US/browse?q=${encodeURIComponent(gameName)}&sortBy=relevancy&sortDir=DESC&count=40`;
     console.log('Attempting to scrape Epic Games from URL:', searchUrl);
 
     page = await browser.newPage();
     await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36');
 
-    await page.goto(searchUrl, { waitUntil: 'domcontentloaded', timeout: 120000 }); // Increased to 120 seconds (already 120)
-
-    const noResultsEpic = await page.evaluate(() => {
-        const element = document.querySelector('div.css-1g5l6v9'); // This selector might need adjustment based on actual Epic Games no results page
-        if (element && element.textContent.includes('No results found')) {
-            return element.textContent;
-        }
-        return null;
-    });
-
-    if (noResultsEpic) {
-        console.log(`Epic Games: No results found for "${gameName}". Halting search.`);
-        return [];
-    }
-
-    // Increased timeout for waiting for the main product card selector
-    await page.waitForSelector('li.css-lrwy1y a.css-g3jcms', { timeout: 60000 }); // Increased to 60 seconds
+    await page.goto(searchUrl, { waitUntil: 'domcontentloaded', timeout: 75000 });
 
     const html = await page.content();
     const $ = cheerio.load(html);
 
-    $('li.css-lrwy1y').each((i, element) => {
-      const name = $(element).find('div.css-s98few span.eds_1ypbntd0 div.css-lgj0h8 div.css-rgqwpc').text().trim();
-      const link = `https://store.epicgames.com${$(element).find('a.css-g3jcms').attr('href')}`;
-      let priceText = $(element).find('div.css-1q7njkh span.eds_1ypbntd0').text().trim();
+    // Collect lists for each field
+    const titleDivs = $('.css-rgqwpc').toArray();
+    const priceSpans = $('.css-12s1vua').toArray();
+    const linkAs = $('a.css-g3jcms').toArray();
+    const imgTags = $('img.css-1ae5wog').toArray();
 
-      if (name && link) {
-        const price = normalizePrice(priceText);
-        results.push({
-          name: name,
-          price: price,
-          website: 'Epic Games',
-          link: link
-        });
+    const maxLen = Math.max(titleDivs.length, priceSpans.length, linkAs.length, imgTags.length);
+    for (let i = 0; i < maxLen; i++) {
+      const name = titleDivs[i] ? $(titleDivs[i]).text().trim() : '';
+      let priceText = priceSpans[i] ? $(priceSpans[i]).text().trim() : '';
+      let price = 0;
+      if (priceText === '' || priceText.toLowerCase().includes('free')) {
+        price = 0;
+      } else {
+        price = parseFloat(priceText.replace(/[^\d.,]/g, '').replace(',', ''));
+        if (isNaN(price)) price = 0;
       }
+      let link = linkAs[i] ? $(linkAs[i]).attr('href') : '';
+      if (link && !link.startsWith('http')) {
+        link = `https://store.epicgames.com${link}`;
+      }
+      let image = '';
+      if (imgTags[i]) {
+        let src = $(imgTags[i]).attr('src');
+        let dataSrc = $(imgTags[i]).attr('data-src');
+        let dataImage = $(imgTags[i]).attr('data-image');
+        let srcset = $(imgTags[i]).attr('srcset');
+        if (dataImage && !dataImage.startsWith('data:') && dataImage.trim() !== '') {
+          image = dataImage;
+        } else if (dataSrc && !dataSrc.startsWith('data:') && dataSrc.trim() !== '') {
+          image = dataSrc;
+        } else if (src && !src.startsWith('data:') && src.trim() !== '') {
+          image = src;
+        } else if (srcset && srcset.trim() !== '') {
+          image = srcset.split(',').pop().split(' ')[0].trim();
+        }
+        let style = $(imgTags[i]).attr('style') || '';
+        let bgMatch = style.match(/background-image:\s*url\(['"]?(.*?)['"]?\)/i);
+        if (bgMatch && bgMatch[1] && !bgMatch[1].startsWith('data:')) {
+          image = bgMatch[1];
+        }
+      }
+      results.push({
+        name,
+        price,
+        website: 'Epic Games',
+        link,
+        icon: storeIcons['Epic Games'],
+        image
+      });
+    }
+
+    // Apply the same exact/secondary match logic as other stores
+    const lowerCaseGameName = gameName.toLowerCase();
+    const significantWordsQuery = getSignificantWords(lowerCaseGameName);
+    const filteredResults = [];
+
+    // Escape special regex characters in the game name for a safe regex construction
+    const escapedGameName = lowerCaseGameName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const strictRegexWithBoundary = new RegExp(`\\b${escapedGameName}\\b`, 'i');
+
+    const primaryMatches = results.filter(result => {
+      const lowerCaseResultName = result.name.toLowerCase();
+      const originalResultName = result.name;
+      if (lowerCaseResultName === lowerCaseGameName) {
+        return true;
+      }
+      if (strictRegexWithBoundary.test(originalResultName)) {
+        const queryHasApostrophe = lowerCaseGameName.includes("'");
+        const queryHasHyphen = lowerCaseGameName.includes("-");
+        if (!queryHasApostrophe && originalResultName.match(new RegExp(`${escapedGameName}'`, 'i'))) {
+          return false;
+        }
+        if (!queryHasHyphen && originalResultName.match(new RegExp(`-${escapedGameName}`, 'i'))) {
+          return false;
+        }
+        if (!queryHasHyphen && originalResultName.match(new RegExp(String.raw`${escapedGameName}-`, 'i'))) {
+          return false;
+        }
+        return true;
+      }
+      return false;
     });
-    console.log('Epic Games Scraped Results:', results);
-    return results;
+    if (primaryMatches.length > 0) {
+      filteredResults.push(...primaryMatches);
+    } else {
+      // Secondary match: all significant words present
+      const secondaryMatches = results.filter(result => {
+        const lowerCaseResultName = result.name.toLowerCase();
+        const significantWordsResult = getSignificantWords(lowerCaseResultName);
+        const isSecondaryExactMatch = significantWordsQuery.every(word => significantWordsResult.includes(word));
+        return isSecondaryExactMatch;
+      });
+      if (secondaryMatches.length > 0) {
+        filteredResults.push(...secondaryMatches);
+    }
+    }
+    return filteredResults;
   } catch (error) {
     console.error('Error scraping Epic Games for "' + gameName + '":', error);
     return [];
@@ -471,156 +680,135 @@ async function searchGOG(gameName, exclusionKeywords, userWantsExcludedContent, 
     page = await browser.newPage(); // Use the shared browser instance
     await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36');
 
-    await page.goto(searchUrl, { waitUntil: 'domcontentloaded', timeout: 60000 });
-    
-    // Check for "We couldn't find anything matching your criteria"
-    const noResultsHeader = await page.evaluate(() => {
-        // More robust check: find any h2 that contains the text
-        const h2Elements = Array.from(document.querySelectorAll('h2'));
-        const foundElement = h2Elements.find(el => el.textContent.includes("We couldn't find anything matching your criteria"));
-        return foundElement ? foundElement.textContent.trim() : null;
+    await page.setExtraHTTPHeaders({
+      'Accept-Language': 'en-US,en;q=0.9',
+      'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
     });
 
-    if (noResultsHeader && noResultsHeader.includes("We couldn't find anything matching your criteria")) {
-        console.log(`GOG: No results found for "${gameName}". Halting search.`);
-        return [];
-    }
-
-    // New GOG 0 games check
-    const zeroGamesHeader = await page.evaluate(() => {
-        const h1Elements = Array.from(document.querySelectorAll('h1'));
-        const foundElement = h1Elements.find(el => el.textContent.includes('Showing 0 games'));
-        return foundElement ? foundElement.textContent.trim() : null;
-    });
-
-    if (zeroGamesHeader && zeroGamesHeader.includes('Showing 0 games')) {
-        console.log(`GOG: Detected "Showing 0 games" header: "${zeroGamesHeader}". Halting search.`);
-        return [];
-    }
-
-    await page.waitForSelector('a.product-tile--grid', { timeout: 60000 });
+    await page.goto(searchUrl, { waitUntil: 'domcontentloaded', timeout: 75000 });
 
     const html = await page.content();
     const $ = cheerio.load(html);
 
-    const initialGameLinks = []; // Store all game links found on search page
-    let count = 0;
-    $('a.product-tile--grid').each((i, element) => {
-      if (count >= 8) return false;
-      const name = $(element).find('.product-tile__title').attr('title') || 
-                   $(element).find('.product-tile__title span').text().trim() ||
-                   $(element).find('img[selenium-id="productTileGameCover"]').attr('alt');
-      const link = $(element).attr('href');
-      if (name && link) {
-        initialGameLinks.push({ name, link });
-        count++;
+    // Collect lists for each field
+    const titleSpans = $('product-title.small span').toArray();
+    const priceSpans = $('span.final-value').toArray();
+    const linkAs = $('a.product-tile.product-tile--grid').toArray();
+    const imgTags = $("img[selenium-id='productTileGameCover']").toArray();
+
+    const maxLen = Math.max(titleSpans.length, priceSpans.length, linkAs.length, imgTags.length);
+    for (let i = 0; i < maxLen; i++) {
+      const name = titleSpans[i] ? $(titleSpans[i]).text().trim() : '';
+      let priceText = priceSpans[i] ? $(priceSpans[i]).text().trim() : '';
+      let price = 0;
+      if (priceText === '' || priceText.toLowerCase().includes('free')) {
+        price = 0;
+      } else if (priceText.includes('$')) {
+        // Convert USD to INR
+        let usd = parseFloat(priceText.replace(/[^\d.]/g, ''));
+        if (!isNaN(usd)) {
+          price = Math.round(usd * USD_TO_INR_RATE);
+        } else {
+          price = 0;
+        }
+      } else {
+        price = parseFloat(priceText.replace(/[^\d.,]/g, '').replace(',', ''));
+        if (isNaN(price)) price = 0;
       }
-    });
+      let link = linkAs[i] ? $(linkAs[i]).attr('href') : '';
+      if (link && !link.startsWith('http')) {
+        link = `https://www.gog.com${link}`;
+      }
+      let image = '';
+      if (imgTags[i]) {
+        let src = $(imgTags[i]).attr('src');
+        let dataSrc = $(imgTags[i]).attr('data-src');
+        let dataImage = $(imgTags[i]).attr('data-image');
+        let srcset = $(imgTags[i]).attr('srcset');
+        if (src && src !== 'true' && !src.startsWith('data:') && src.trim() !== '') {
+          image = src;
+        } else if (dataSrc && !dataSrc.startsWith('data:') && dataSrc.trim() !== '') {
+          image = dataSrc;
+        } else if (dataImage && !dataImage.startsWith('data:') && dataImage.trim() !== '') {
+          image = dataImage;
+        } else if (srcset && srcset.trim() !== '') {
+          image = srcset.split(',').pop().split(' ')[0].trim();
+        }
+        let style = $(imgTags[i]).attr('style') || '';
+        let bgMatch = style.match(/background-image:\s*url\(['"]?(.*?)['"]?\)/i);
+        if (bgMatch && bgMatch[1] && !bgMatch[1].startsWith('data:')) {
+          image = bgMatch[1];
+        }
+      }
+      if (!image) {
+        // Fallback: check for background-image in style attribute on parent
+        let parentStyle = linkAs[i] ? $(linkAs[i]).parent().attr('style') || '' : '';
+        let parentBgMatch = parentStyle.match(/background-image:\s*url\(['"]?(.*?)['"]?\)/i);
+        if (parentBgMatch && parentBgMatch[1] && !parentBgMatch[1].startsWith('data:')) {
+          image = parentBgMatch[1];
+        }
+        }
+      if (image && !image.startsWith('http')) {
+        image = `https://www.gog.com${image}`;
+      }
+      if (name || link) {
+        results.push({
+        name,
+        price,
+        website: 'GOG',
+        link,
+        icon: storeIcons['GOG'],
+        image
+        });
+      }
+    }
 
-    console.log(`Found ${initialGameLinks.length} potential GOG games from search results.`);
-
-    // --- NEW: Filter gameLinks before visiting individual pages ---
+    // Apply the same exact/secondary match logic as other stores
     const lowerCaseGameName = gameName.toLowerCase();
+    const significantWordsQueryLocal = getSignificantWords(lowerCaseGameName);
+    const filteredResults = [];
+
+    // Escape special regex characters in the game name for a safe regex construction
     const escapedGameName = lowerCaseGameName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    const strictSearchRegex = new RegExp(`\\b${escapedGameName}\\b`, 'i');
+    const strictRegexWithBoundary = new RegExp(`\\b${escapedGameName}\\b`, 'i');
 
-    const filteredGameLinks = initialGameLinks.filter(game => {
-      const lowerCaseGameNameInList = game.name.toLowerCase();
-
-      // Apply exclusion filter
-      if (!userWantsExcludedContent && exclusionKeywords.some(keyword => lowerCaseGameNameInList.includes(keyword))) {
-          console.log(`Skipping GOG game "${game.name}" due to exclusion keyword on search page.`);
-          return false; // Exclude
+    const primaryMatches = results.filter(result => {
+      const lowerCaseResultName = result.name.toLowerCase();
+      const originalResultName = result.name;
+      if (lowerCaseResultName === lowerCaseGameName) {
+        return true;
       }
-
-      // Apply exact match logic
-      // First, strict whole-word match
-      if (strictSearchRegex.test(lowerCaseGameNameInList)) {
-          return true; // Include this strict match
+      if (strictRegexWithBoundary.test(originalResultName)) {
+        const queryHasApostrophe = lowerCaseGameName.includes("'");
+        const queryHasHyphen = lowerCaseGameName.includes("-");
+        if (!queryHasApostrophe && originalResultName.match(new RegExp(`${escapedGameName}'`, 'i'))) {
+          return false;
+        }
+        if (!queryHasHyphen && originalResultName.match(new RegExp(`-${escapedGameName}`, 'i'))) {
+          return false;
+        }
+        if (!queryHasHyphen && originalResultName.match(new RegExp(String.raw`${escapedGameName}-`, 'i'))) {
+          return false;
+        }
+        return true;
       }
-
-      // If no strict match, try secondary (significant words) exact match
-      const significantWordsResult = getSignificantWords(lowerCaseGameNameInList);
-      const isSecondaryExactMatch = significantWordsQuery.every(word => significantWordsResult.includes(word));
-      
-      if (isSecondaryExactMatch) {
-          return true; // Include this secondary match
-      }
-
-      console.log(`Skipping GOG game "${game.name}" as it's not an exact match on search page.`);
-      return false; // Exclude if neither exact match type is found
+      return false;
     });
-
-    console.log(`After pre-navigation filtering, ${filteredGameLinks.length} GOG games remain.`);
-    // --- END NEW FILTERING ---
-
-    const pricePromises = filteredGameLinks.map(async (game) => { // Map over filtered links
-      let gamePage;
-      try {
-        gamePage = await browser.newPage(); // Use the shared browser instance
-        await gamePage.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36');
-        
-        await gamePage.goto(game.link, { waitUntil: 'domcontentloaded', timeout: 60000 });
-        
-        // Increased timeout to 60 seconds for price selectors
-        await gamePage.waitForSelector('.product-actions-price__final-amount, .price__value, .product-actions__buy-button--free, .product-actions__lowest-price-before-discount ._price', { timeout: 60000 }); 
-        
-        const gamePageHtml = await gamePage.content();
-        const $$ = cheerio.load(gamePageHtml);
-
-        let priceText = 'N/A';
-        const finalAmountElement = $$('.product-actions-price__final-amount').first(); // New selector
-        const priceElement = $$('.price__value').first();
-        const freeButton = $$('.product-actions__buy-button--free');
-        const lowestPriceBeforeDiscountElement = $$('.product-actions__lowest-price-before-discount ._price').first(); // New element
-
-        if (freeButton.length > 0) {
-            priceText = 'Free';
-        } else if (finalAmountElement.length > 0) { // Prioritize the new final amount selector
-            priceText = finalAmountElement.text().trim();
-        } else if (priceElement.length > 0) {
-            priceText = priceElement.text().trim();
-        } else if (lowestPriceBeforeDiscountElement.length > 0) { // Fallback to lowest price before discount
-            priceText = lowestPriceBeforeDiscountElement.text().trim();
-        }
-
-        console.log(`GOG - Raw Price for "${game.name}" from game page: "${priceText}"`);
-        let price = normalizePrice(priceText);
-        
-        // Convert USD to INR if the price is numeric and from GOG
-        if (typeof price === 'number' && price !== 0 && price !== 'N/A') {
-            price = price * USD_TO_INR_RATE;
-        }
-
-        console.log(`GOG - Normalized Price for "${game.name}": "${price}"`);
-
-        return {
-          name: game.name,
-          price: price,
-          website: 'GOG',
-          link: game.link
-        };
-
-      } catch (gamePageError) {
-        console.error(`Error scraping price for "${game.name}" from ${game.link}:`, gamePageError.message);
-        return {
-          name: game.name,
-          price: 'N/A',
-          website: 'GOG',
-          link: game.link
-        };
-      } finally {
-        if (gamePage) {
-          await gamePage.close(); // Close the individual page
-        }
+    if (primaryMatches.length > 0) {
+      filteredResults.push(...primaryMatches);
+    } else {
+      // Secondary match: all significant words present
+      const secondaryMatches = results.filter(result => {
+        const lowerCaseResultName = result.name.toLowerCase();
+        const significantWordsResult = getSignificantWords(lowerCaseResultName);
+        const isSecondaryExactMatch = significantWordsQueryLocal.every(word => significantWordsResult.includes(word));
+        return isSecondaryExactMatch;
+      });
+      if (secondaryMatches.length > 0) {
+        filteredResults.push(...secondaryMatches);
       }
-    });
-
-    const results = await Promise.all(pricePromises);
-
-    console.log('GOG Scraped Results:', results);
-    return results;
-
+    }
+    return filteredResults;
   } catch (error) {
     console.error('Error in searchGOG function:', error);
     return [];
@@ -631,78 +819,119 @@ async function searchGOG(gameName, exclusionKeywords, userWantsExcludedContent, 
   }
 }
 
-// Updated function to search Xbox PC Game Pass with additional final logging
-// Updated to accept and use the shared browser instance
+// Function to scrape Xbox PC Game Pass from the search page only
 async function searchXboxGamePass(gameName, browser) {
   let page;
   const results = [];
   try {
-    const searchUrl = `https://www.xbox.com/en-us/search/results/games?q=${encodeURIComponent(gameName)}&IncludedInSubscription=CFQ7TTC0KGQ8`;
+    // Use the correct Xbox search URL format
+    const searchUrl = `https://www.xbox.com/en-US/search/results/games?q=${encodeURIComponent(gameName)}&IncludedInSubscription=CFQ7TTC0KGQ8`;
     console.log('Attempting to search Xbox PC Game Pass from URL:', searchUrl);
 
     page = await browser.newPage(); // Use the shared browser instance
     await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36');
 
-    await page.goto(searchUrl, { waitUntil: 'domcontentloaded', timeout: 60000 });
-
-    // Check for "Games (0)" in the tab button's aria-label
-    const gamesZeroButton = await page.evaluate(() => {
-        const button = document.querySelector('button.Tabs-module__tabButton___wRKYV[aria-label*="Games, 0 results shown"]');
-        return button ? button.textContent.trim() : null;
+    await page.setExtraHTTPHeaders({
+      'Accept-Language': 'en-US,en;q=0.9',
+      'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
     });
 
-    if (gamesZeroButton && gamesZeroButton.includes('Games (0)')) {
-        console.log(`Xbox Game Pass: "Games (0)" found for "${gameName}". Halting search.`);
-        return [];
+    await page.goto(searchUrl, { waitUntil: 'domcontentloaded', timeout: 75000 });
+    // Wait for the results to appear (up to 15 seconds)
+    try {
+      await page.waitForSelector('span.ProductCard-module__title___nHGIp', { timeout: 15000 });
+    } catch (e) {
+      console.log('Xbox GP: No result selector found after waiting.');
     }
 
-    // Check for "Sorry looks like we have nothing here."
-    const noResultsXbox = await page.evaluate(() => {
-        const element = document.querySelector('h4.ErrorWithImage-module__errorHeading___xEheO');
-        return element ? element.textContent.trim() : null;
-    });
+    let html = await page.content();
+    let $ = cheerio.load(html);
 
-    if (noResultsXbox && noResultsXbox.includes('Sorry looks like we have nothing here.')) {
-        console.log(`Xbox Game Pass: No results found for "${gameName}". Halting search.`);
-        return [];
-    }
+    // Instead of looping over all main divs, collect lists for each field
+    const titleSpans = $('span.ProductCard-module__title___nHGIp').toArray();
+    const priceSpans = $('span.ProductCard-module__price___cs1xr').toArray();
+    const linkAnchors = $('a.commonStyles-module__basicButton___go-bX').toArray();
+    const imgTags = $('img.ProductCard-module__boxArt___-2vQY').toArray();
 
-    await page.waitForSelector('li div.ProductCard-module__cardWrapper___6Ls86', { timeout: 60000 });
+    console.log(`Xbox GP: Found ${titleSpans.length} titles, ${priceSpans.length} prices, ${linkAnchors.length} links, ${imgTags.length} images.`);
 
-    const html = await page.content();
-    const $ = cheerio.load(html);
-
-    const lowerCaseGameName = gameName.toLowerCase();
-    const significantWordsQuery = getSignificantWords(lowerCaseGameName);
-
-    console.log(`Xbox Game Pass - Searching for significant words: [${significantWordsQuery.join(', ')}]`);
-
-    $('li div.ProductCard-module__cardWrapper___6Ls86').each((i, element) => {
-      // Updated selectors based on the provided HTML snippet
-      const name = $(element).find('.ProductCard-module__title___nHGIp').text().trim();
-      const link = `https://www.xbox.com${$(element).find('a.commonStyles-module__basicButton___go-bX').attr('href')}`;
-      
-      // Price is handled by setting it to 0 for Game Pass titles as per previous request
-      const priceText = 'Game Pass'; 
-
-      if (name && link) {
-        const lowerCaseName = name.toLowerCase();
-        const significantWordsResult = getSignificantWords(lowerCaseName);
-
-        // Check for "Game Pass" in the name itself, or if the result name contains all significant words from the query
-        const isExactMatch = lowerCaseName.includes('game pass') || significantWordsQuery.every(word => significantWordsResult.includes(word));
-        
-        if (isExactMatch) {
-            results.push({
-                name: name,
-                price: 0, // Show as 0 for Game Pass
-                website: 'Xbox Game Pass',
-                link: link
-            });
+    const maxLen = Math.max(titleSpans.length, priceSpans.length, linkAnchors.length, imgTags.length);
+    for (let i = 0; i < maxLen; i++) {
+      // Title
+      const name = titleSpans[i] ? $(titleSpans[i]).text().trim() : '';
+      // Price
+      let priceText = priceSpans[i] ? $(priceSpans[i]).text().trim() : '';
+      let price = 0;
+      if (priceText === '' || priceText.toLowerCase().includes('free')) {
+        price = 0;
+      } else if (priceText.includes('$')) {
+        // Convert USD to INR
+        let usd = parseFloat(priceText.replace(/[^\d.]/g, ''));
+        if (!isNaN(usd)) {
+          price = Math.round(usd * USD_TO_INR_RATE);
+        } else {
+          price = 0;
+      }
+      } else {
+        price = parseFloat(priceText.replace(/[^\d.,]/g, '').replace(',', ''));
+        if (isNaN(price)) price = 0;
+      }
+      // Image (robust extraction like Epic)
+      let image = '';
+      if (imgTags[i]) {
+        let src = $(imgTags[i]).attr('src');
+        let dataSrc = $(imgTags[i]).attr('data-src');
+        let dataImage = $(imgTags[i]).attr('data-image');
+        let srcset = $(imgTags[i]).attr('srcset');
+        if (dataImage && !dataImage.startsWith('data:') && dataImage.trim() !== '') {
+          image = dataImage;
+        } else if (dataSrc && !dataSrc.startsWith('data:') && dataSrc.trim() !== '') {
+          image = dataSrc;
+        } else if (src && !src.startsWith('data:') && src.trim() !== '') {
+          image = src;
+        } else if (srcset && srcset.trim() !== '') {
+          image = srcset.split(',').pop().split(' ')[0].trim();
+        }
+        let style = $(imgTags[i]).attr('style') || '';
+        let bgMatch = style.match(/background-image:\s*url\(['"]?(.*?)['"]?\)/i);
+        if (bgMatch && bgMatch[1] && !bgMatch[1].startsWith('data:')) {
+          image = bgMatch[1];
         }
       }
-    });
-    console.log('Xbox Game Pass Scraped Results:', results);
+      if (!image) {
+        // Fallback: check for background-image in style attribute on parent
+        let parentStyle = linkAnchors[i] ? $(linkAnchors[i]).parent().attr('style') || '' : '';
+        let parentBgMatch = parentStyle.match(/background-image:\s*url\(['"]?(.*?)['"]?\)/i);
+        if (parentBgMatch && parentBgMatch[1] && !parentBgMatch[1].startsWith('data:')) {
+          image = parentBgMatch[1];
+        }
+      }
+      if (image && !image.startsWith('http')) {
+        image = `https://www.xbox.com${image}`;
+      }
+      // Link
+      let link = linkAnchors[i] ? $(linkAnchors[i]).attr('href') : '';
+      if (link && !link.startsWith('http')) {
+        link = `https://www.xbox.com${link}`;
+      }
+      // Only push if at least a name or link is present
+      if (name || link) {
+        console.log(`Xbox GP row ${i}: name='${name}', price='${price}', link='${link}', image='${image}'`);
+        results.push({
+        name,
+          price,
+        website: 'Xbox Game Pass',
+        link,
+        icon: storeIcons['Xbox Game Pass'],
+        image
+        });
+      }
+    }
+    if (results.length === 0) {
+      // Log the main search area for debugging
+      const mainHtml = $('main').html() || $.html();
+      console.log('Xbox GP: No results found. Main HTML snippet:', mainHtml.substring(0, 2000));
+    }
     return results;
   } catch (error) {
     console.error('Error scraping Xbox Game Pass for "' + gameName + '":', error);
@@ -712,6 +941,184 @@ async function searchXboxGamePass(gameName, browser) {
       await page.close(); // Close the page
     }
     // DO NOT close the browser here
+  }
+}
+
+// Function to scrape G2A for game prices (new robust logic)
+async function searchG2A(gameName, browser) {
+  let page;
+  const results = [];
+  try {
+    const searchUrl = `https://www.g2a.com/search?query=${encodeURIComponent(gameName)}`;
+    console.log('Attempting to scrape G2A from URL:', searchUrl);
+
+    page = await browser.newPage();
+    await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
+    await page.setExtraHTTPHeaders({
+      'Accept-Language': 'en-US,en;q=0.9',
+      'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+      'Referer': 'https://www.g2a.com/',
+      'Sec-Fetch-Site': 'same-origin',
+      'Sec-Fetch-Mode': 'navigate',
+      'Sec-Fetch-User': '?1',
+      'Sec-Fetch-Dest': 'document',
+      'Upgrade-Insecure-Requests': '1',
+    });
+    await page.setViewport({ width: 1280, height: 900 });
+    await page.setCookie(
+      { name: '_abck', value: '2877EF9A79387', domain: '.g2a.com' },
+      { name: 'store', value: 'englishus', domain: '.g2a.com' },
+      { name: 'sessionId', value: '9ddf81bb-74f9-4', domain: '.g2a.com' },
+      { name: 'forterToken', value: '5ad4f128372242', domain: '.g2a.com' },
+      { name: 'bm_sz', value: '84EF6640251A8', domain: '.g2a.com' },
+      { name: 'bm_sv', value: 'F83D329D114E9', domain: '.g2a.com' },
+      { name: 'bm_ss', value: 'ab8e18ef4e', domain: '.g2a.com' },
+      { name: 'bm_so', value: 'A029606161B41', domain: '.g2a.com' },
+      { name: 'bm_s', value: 'YAAQH3UsMQXS', domain: '.g2a.com' },
+      { name: 'bm_mi', value: 'E71AF94AB7598', domain: '.g2a.com' },
+      { name: 'bm_lso', value: 'A029606161B41', domain: '.g2a.com' },
+      { name: 'ak_bmsc', value: 'BAD4B71B17094', domain: '.g2a.com' }
+    );
+    await page.goto(searchUrl, { waitUntil: 'networkidle2', timeout: 90000 });
+    await new Promise(resolve => setTimeout(resolve, 3500)); // Wait for JS rendering
+    let foundSelector = false;
+    try {
+      await page.waitForSelector('h3.font-bold.text-3xl.line-clamp-1', { timeout: 4000 });
+      foundSelector = true;
+      await new Promise(resolve => setTimeout(resolve, 1200));
+    } catch (e) {
+      // Try a more general product card selector
+      try {
+        await page.waitForSelector('div.relative[style*="height: 227px;"]', { timeout: 4000 });
+        foundSelector = true;
+        await new Promise(resolve => setTimeout(resolve, 1200));
+      } catch (e2) {
+        console.log('G2A: No product card selector found after waiting. Dumping HTML snippet for debug.');
+        const debugHtml = await page.content();
+        console.log(debugHtml.slice(0, 2000)); // Log first 2000 chars for debug
+      }
+    }
+    const html = await page.content();
+    const $ = cheerio.load(html);
+
+    // Collect lists for each field
+    const nameEls = $('h3.font-bold.text-3xl.line-clamp-1').toArray();
+    const priceEls = $('div.font-bold.text-foreground.text-price-2xl').toArray();
+    const imgCards = $("div.relative[style*='height: 227px;']").toArray();
+    const linkAs = $("div.flex.w-full.flex-col.justify-between a[href]").toArray();
+
+    const maxLen = Math.max(nameEls.length, priceEls.length, linkAs.length, imgCards.length);
+    for (let i = 0; i < maxLen; i++) {
+      // Name
+      const name = nameEls[i] ? $(nameEls[i]).text().trim() : '';
+      // Price (convert USD to INR)
+      let priceText = priceEls[i] ? $(priceEls[i]).text().trim() : '';
+      let price = 0;
+      if (priceText === '' || priceText.toLowerCase().includes('free')) {
+        price = 0;
+      } else if (priceText.match(/\d+[.,]?\d*/)) {
+        let usd = parseFloat(priceText.replace(/[^\d.]/g, ''));
+        if (!isNaN(usd)) {
+          price = Math.round(usd * USD_TO_INR_RATE);
+        } else {
+          price = 0;
+        }
+      }
+      // Link
+      let link = linkAs[i] ? $(linkAs[i]).attr('href') : '';
+      if (link && !link.startsWith('http')) {
+        link = `https://www.g2a.com${link}`;
+      }
+      // Image
+      let image = '';
+      if (imgCards[i]) {
+        const img = $(imgCards[i]).find('img').first();
+        if (img.length) {
+          let src = img.attr('src');
+          let dataSrc = img.attr('data-src');
+          let dataImage = img.attr('data-image');
+          let srcset = img.attr('srcset');
+          if (src && src !== 'true' && !src.startsWith('data:') && src.trim() !== '') {
+            image = src;
+          } else if (dataSrc && !dataSrc.startsWith('data:') && dataSrc.trim() !== '') {
+            image = dataSrc;
+          } else if (dataImage && !dataImage.startsWith('data:') && dataImage.trim() !== '') {
+            image = dataImage;
+          } else if (srcset && srcset.trim() !== '') {
+            image = srcset.split(',').pop().split(' ')[0].trim();
+          }
+          let style = img.attr('style') || '';
+          let bgMatch = style.match(/background-image:\s*url\(['"]?(.*?)['"]?\)/i);
+          if (bgMatch && bgMatch[1] && !bgMatch[1].startsWith('data:')) {
+            image = bgMatch[1];
+          }
+        }
+      }
+      if (image && !image.startsWith('http')) {
+        image = `https://www.g2a.com${image}`;
+      }
+      if (name || link) {
+        results.push({
+          name,
+          price,
+          website: 'G2A',
+          link,
+          icon: '/icons/g2a.png',
+          image
+        });
+      }
+    }
+
+    // Apply the same exact/secondary match logic as other stores
+    const lowerCaseGameName = gameName.toLowerCase();
+    const significantWordsQuery = getSignificantWords(lowerCaseGameName);
+    const filteredResults = [];
+    const escapedGameName = lowerCaseGameName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const strictRegexWithBoundary = new RegExp(`\\b${escapedGameName}\\b`, 'i');
+    const primaryMatches = results.filter(result => {
+      const lowerCaseResultName = result.name.toLowerCase();
+      const originalResultName = result.name;
+      if (lowerCaseResultName === lowerCaseGameName) {
+        return true;
+      }
+      if (strictRegexWithBoundary.test(originalResultName)) {
+        const queryHasApostrophe = lowerCaseGameName.includes("'");
+        const queryHasHyphen = lowerCaseGameName.includes("-");
+        if (!queryHasApostrophe && originalResultName.match(new RegExp(`${escapedGameName}'`, 'i'))) {
+          return false;
+        }
+        if (!queryHasHyphen && originalResultName.match(new RegExp(`-${escapedGameName}`, 'i'))) {
+          return false;
+        }
+        if (!queryHasHyphen && originalResultName.match(new RegExp(String.raw`${escapedGameName}-`, 'i'))) {
+          return false;
+        }
+        return true;
+      }
+      return false;
+    });
+    if (primaryMatches.length > 0) {
+      filteredResults.push(...primaryMatches);
+    } else {
+      // Secondary match: all significant words present
+      const secondaryMatches = results.filter(result => {
+        const lowerCaseResultName = result.name.toLowerCase();
+        const significantWordsResult = getSignificantWords(lowerCaseResultName);
+        const isSecondaryExactMatch = significantWordsQuery.every(word => significantWordsResult.includes(word));
+        return isSecondaryExactMatch;
+      });
+      if (secondaryMatches.length > 0) {
+        filteredResults.push(...secondaryMatches);
+      }
+    }
+    return filteredResults;
+  } catch (error) {
+    console.error('Error scraping G2A for "' + gameName + '":', error);
+    return [];
+  } finally {
+    if (page) {
+      await page.close();
+    }
   }
 }
 
@@ -737,11 +1144,8 @@ app.get('/search', async (req, res) => {
     // Ensure browser instance is available before starting searches
     if (!browserInstance) {
         browserInstance = await puppeteer.launch({
-            args: [...chromium.args(), '--disable-gpu'],
-            defaultViewport: chromium.defaultViewport,
-            executablePath: await chromium.executablePath(),
-            headless: chromium.headless,
-            timeout: 60000,
+            headless: false,
+            args: ['--no-sandbox', '--disable-setuid-sandbox']
         });
     }
 
@@ -783,78 +1187,47 @@ app.get('/search', async (req, res) => {
     const applyWebsiteFilter = (websiteName) => {
       const websiteResults = allResults.filter(result => result.website === websiteName);
       
-      const lowerCaseGameName = gameName.toLowerCase(); // Ensure this is available here
       // Escape special regex characters in the game name for a safe regex construction
       const escapedGameName = lowerCaseGameName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      const strictRegexWithBoundary = new RegExp(`\\b${escapedGameName}\\b`, 'i');
 
-      let strictExactMatches = [];
+      const primaryMatches = websiteResults.filter(result => {
+        const lowerCaseResultName = result.name.toLowerCase();
+        const originalResultName = result.name; 
 
-      // Primary Strict Match Logic:
-      // 1. Exact match of the entire string
-      if (websiteResults.some(result => result.name.toLowerCase() === lowerCaseGameName)) {
-        strictExactMatches = websiteResults.filter(result => result.name.toLowerCase() === lowerCaseGameName);
-      } else {
-        // 2. Match the game name as a whole word, considering specific delimiters.
-        // This regex looks for:
-        // (start of string OR a non-alphanumeric character that is NOT apostrophe/hyphen)
-        // followed by the escaped game name
-        // followed by (end of string OR a non-alphanumeric character that is NOT apostrophe/hyphen)
-        // Using `[^\w']` will exclude word chars AND apostrophe. This is tricky.
-        // Let's use `\b` but then manually check for apostrophes/hyphens.
+        // Condition 1: Exact full string match
+        if (lowerCaseResultName === lowerCaseGameName) {
+            return true;
+        }
 
-        // A more robust regex for strict whole-word matching, allowing for common delimiters like spaces, commas, periods etc.
-        // but *not* matching if the word is immediately adjacent to an apostrophe or hyphen (e.g., "Hades'" or "-Hades").
-        // This regex ensures the word is preceded/followed by a non-word boundary or string start/end,
-        // AND not directly adjacent to ' or -.
-        // This pattern might be too complex for a single regex in a robust way due to variable negative lookaheads/behinds in JS regex.
-
-        // Alternative for strict exact match:
-        // Split the result name by common delimiters (spaces, commas, colons, periods, etc.)
-        // but NOT by apostrophes or hyphens for this first level of strictness.
-        const delimitersRegex = /[ ,.:;!?"()\/\\]+/g; // Common delimiters, excluding ' and -
-        
-        strictExactMatches = websiteResults.filter(result => {
-          const lowerCaseResultName = result.name.toLowerCase();
-          // Replace delimiters with spaces, then split into words.
-          const resultWords = lowerCaseResultName
-            .replace(delimitersRegex, ' ')
-            .split(' ')
-            .filter(word => word.length > 0); // Remove empty strings from splitting
-
-          // Check if the lowerCaseGameName exists as a whole word in the list of resultWords.
-          // This ensures "Hades: The Game" contains "hades", but "Shades" does not.
-          // For "Hades'" or "-Hades", if the inner word is extracted as "hades", this will still match.
-          // We need an additional check for direct adjacency of ' or -.
-
-          // To explicitly exclude 'Hades'' or '-Hades' for 'Hades':
-          // We can combine the strict regex with `\b` and then check if the *original* name contains the undesirable patterns.
-          const strictRegexWithBoundary = new RegExp(`\\b${escapedGameName}\\b`, 'i');
-          const originalResultName = result.name; // Use original name for checks
-
-          if (strictRegexWithBoundary.test(originalResultName)) {
-            // Further check for unwanted encapsulation:
-            // If the original game name contains the search term immediately followed by an apostrophe or preceded by a hyphen
-            // and the search term itself does not contain these, then it's not a strict match.
+        // Condition 2: Whole word match with punctuation handling
+        // Check for the word boundary match first
+        if (strictRegexWithBoundary.test(originalResultName)) {
             const queryHasApostrophe = lowerCaseGameName.includes("'");
             const queryHasHyphen = lowerCaseGameName.includes("-");
 
+            // Exclude if original result name contains the query followed by ' AND query does not have '
             if (!queryHasApostrophe && originalResultName.match(new RegExp(`${escapedGameName}'`, 'i'))) {
-              return false; // Exclude "Hades'" if searching for "Hades"
+              return false; 
             }
+            // Exclude if original result name contains the query preceded by - AND query does not have -
             if (!queryHasHyphen && originalResultName.match(new RegExp(`-${escapedGameName}`, 'i'))) {
-              return false; // Exclude "-Hades" if searching for "Hades"
+              return false; 
             }
-            return true; // It's a strict match based on boundary and no undesirable encapsulation
-          }
-          return false; // No strict match
-        });
-      }
+            // Exclude if original result name contains the query followed by - AND query does not have -
+            if (!queryHasHyphen && originalResultName.match(new RegExp(String.raw`${escapedGameName}-`, 'i'))) {
+                return false;
+            }
+            return true; 
+        }
+        return false; // No primary match
+      });
 
-      if (strictExactMatches.length > 0) {
-        filteredByWebsiteExactMatch.push(...strictExactMatches);
+      if (primaryMatches.length > 0) {
+        filteredByWebsiteExactMatch.push(...primaryMatches);
       } else {
-        // If no strict exact matches, try the secondary exact match logic (significant words)
-        const secondaryExactMatches = websiteResults.filter(result => {
+        // If no primary matches, try the secondary exact match logic (significant words)
+        const secondaryMatches = websiteResults.filter(result => {
           const lowerCaseResultName = result.name.toLowerCase();
           const significantWordsResult = getSignificantWords(lowerCaseResultName);
           
@@ -862,8 +1235,8 @@ app.get('/search', async (req, res) => {
           return isSecondaryExactMatch;
         });
 
-        if (secondaryExactMatches.length > 0) {
-          filteredByWebsiteExactMatch.push(...secondaryExactMatches);
+        if (secondaryMatches.length > 0) {
+          filteredByWebsiteExactMatch.push(...secondaryMatches);
         }
         // If neither strict nor secondary matches are found, nothing is pushed for this website
       }
@@ -893,13 +1266,10 @@ app.listen(port, async () => {
   console.log(`Server running on port ${port}`);
   try {
     browserInstance = await puppeteer.launch({
-        args: [...chromium.args(), '--disable-gpu'],
-        defaultViewport: chromium.defaultViewport,
-        executablePath: await chromium.executablePath(),
-        headless: chromium.headless,
-        timeout: 60000,
+        headless: false,
+        args: ['--no-sandbox', '--disable-setuid-sandbox']
     });
-    console.log('Puppeteer browser launched successfully using @sparticuz/chromium.');
+    console.log('Puppeteer browser launched successfully.');
   } catch (error) {
     console.error('Failed to launch Puppeteer browser:', error);
     process.exit(1); // Exit if browser fails to launch
