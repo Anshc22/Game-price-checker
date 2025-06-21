@@ -25,8 +25,8 @@ document.addEventListener('DOMContentLoaded', () => {
     const pageInfoSpanBottom = document.getElementById('pageInfoBottom');
 
     // New filter elements (updated IDs)
-    const storeFilterContainer = document.getElementById('sidebar-filters');
-    const storeCheckboxes = document.querySelectorAll('#sidebar-filters input[type="checkbox"]');
+    const storeFilterContainer = document.getElementById('filter-stores');
+    let storeCheckboxes = document.querySelectorAll('#filter-stores input[type="checkbox"]');
 
     let currentSortColumn = null;
     let currentSortOrder = 'asc'; // 'asc' or 'desc'
@@ -38,9 +38,48 @@ document.addEventListener('DOMContentLoaded', () => {
     let currentPage = 1;
     const itemsPerPage = 30; // Set items per page
 
+    function populateStoreFilters() {
+        const stores = [
+            { id: 'allStores', value: 'All', title: 'All Stores', icon: 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjQiIGhlaWdodD0iMjQiIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPHBhdGggZD0iTTE5IDNIMTlDMTcuMzQzMSAzIDE2IDQuMzQzMTUgMTYgNlYxOEMxNiAxOS42NTY5IDE3LjM0MzEgMjEgMTkgMjFIMTlDMjAuNjU2OSAyMSAyMiAxOS42NTY5IDIyIDE4VjZDMjIgNC4zNDMxNSAyMC42NTY5IDMgMTkgM1oiIHN0cm9rZT0iY3VycmVudENvbG9yIiBzdHJva2Utd2lkdGg9IjIiIHN0cm9rZS1saW5lY2FwPSJyb3VuZCIgc3Ryb2tlLWxpbmVqb2luPSJyb3VuZCIvPgo8cGF0aCBkPSJNMTIgM0gxMkMxMC4zNDMxIDMgOSA0LjM0MzE1IDkgNlYxOEMyIDE5LjY1NjkgMy4zNDMxNSAyMSAxMiAyMUgxMkMxMy42NTY5IDIxIDE1IDE5LjY1NjkgMTUgMThWNkMxNSA0LjM0MzE1IDEzLjY1NjkgMyAxMiAzWiIgc3Ryb2tlPSJjdXJyZW50Q29sb3IiIHN0cm9rZS13aWR0aD0iMiIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIiBzdHJva2UtbGluZWpvaW49InJvdW5kIi8+CjxwYXRoIGQ9Ik01IDNINUMzLjM0MzE1IDMgMiA0LjM0MzE1IDIgNlYxOEMyIDE5LjY1NjkgMy4zNDMxNSAyMSA1IDIxSDVDNi42NTY4NSAyMSA4IDE5LjY1NjkgOCAxOFY2QzggNC4zNDMxNSA2LjY1Njg1IDMgNSAzWiIgc3Ryb2tlPSJjdXJyZW50Q29sb3IiIHN0cm9rZS13aWR0aD0iMiIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIiBzdHJva2UtbGluZWpvaW49InJvdW5kIi8+Cjwvc3ZnPgo=' },
+            { id: 'steam', value: 'Steam', title: 'Steam', icon: 'https://community.cloudflare.steamstatic.com/public/shared/images/responsive/share_steam_logo.png' },
+            { id: 'gog', value: 'GOG', title: 'GOG', icon: '/icons/GOG.png' },
+            { id: 'eneba', value: 'Eneba', title: 'Eneba', icon: '/icons/Eneba.png' },
+            { id: 'cdkeys', value: 'CDKeys', title: 'CDKeys', icon: 'https://upload.wikimedia.org/wikipedia/commons/f/f3/CD_Keys.png' },
+            { id: 'kinguin', value: 'Kinguin', title: 'Kinguin', icon: '/icons/Kinguin.jpg' },
+            { id: 'epic', value: 'Epic Games', title: 'Epic Games', icon: 'https://upload.wikimedia.org/wikipedia/commons/5/57/Epic_games_store_logo.svg' },
+            { id: 'xbox', value: 'Xbox India', title: 'Xbox India', icon: '/icons/xbox.jpg' }
+        ];
+
+        stores.forEach(store => {
+            const div = document.createElement('div');
+            div.className = 'filter-checkbox';
+
+            const input = document.createElement('input');
+            input.type = 'checkbox';
+            input.id = store.id;
+            input.value = store.value;
+            if (store.id === 'allStores') input.checked = true;
+
+            const label = document.createElement('label');
+            label.htmlFor = store.id;
+            label.className = 'store-icon-label';
+            label.title = store.title;
+
+            const img = document.createElement('img');
+            img.src = store.icon;
+            img.alt = store.title;
+            img.className = 'filter-store-icon';
+            
+            label.appendChild(img);
+            div.appendChild(input);
+            div.appendChild(label);
+            storeFilterContainer.appendChild(div);
+        });
+    }
+
     // Function to filter results by selected stores
     function filterResultsByStore() {
-        const selectedValues = Array.from(storeCheckboxes)
+        const selectedValues = Array.from(document.querySelectorAll('#filter-stores input[type="checkbox"]'))
             .filter(checkbox => checkbox.checked)
             .map(checkbox => checkbox.value);
 
@@ -52,6 +91,8 @@ document.addEventListener('DOMContentLoaded', () => {
         currentPage = 1;
         goToPage(1);
         updateStoreFilterCounts(); // Update counts after filtering
+        // Always sort by price ascending after filtering
+        sortResults('price', 'asc');
     }
 
     // Function to handle "All Stores" checkbox logic and disable/enable other checkboxes
@@ -127,12 +168,17 @@ document.addEventListener('DOMContentLoaded', () => {
     function renderTablePage(resultsToRender) {
         priceTableBody.innerHTML = ''; // Clear existing rows
         if (resultsToRender.length > 0) {
+            let visibleIndex = 0;
             resultsToRender.forEach((item, index) => {
+                // Skip Xbox India games with price -1
+                if (item.website === 'Xbox India' && item.price === -1) return;
+                visibleIndex++;
                 console.log('Rendering item:', item); // LOG
                 const row = priceTableBody.insertRow();
-                row.insertCell(0).textContent = (currentPage - 1) * itemsPerPage + index + 1; // Row number
+                row.insertCell(0).textContent = (currentPage - 1) * itemsPerPage + visibleIndex; // Row number starts from 1
                 // New: Image column
                 const imageCell = row.insertCell(1);
+                imageCell.className = 'game-cover-cell'; // Add class for specific styling
                 if (item.image) {
                     const img = document.createElement('img');
                     img.src = item.image;
@@ -152,28 +198,44 @@ document.addEventListener('DOMContentLoaded', () => {
                 } else {
                     nameCell.textContent = item.name;
                 }
+                if (item.website === 'Xbox India' && item.gamePass) {
+                    const gpIcon = document.createElement('img');
+                    gpIcon.src = '/icons/Game pass.jpg';
+                    gpIcon.alt = 'Game Pass';
+                    gpIcon.title = 'Available on Game Pass';
+                    gpIcon.className = 'game-pass-inline-icon';
+                    nameCell.appendChild(gpIcon);
+                }
+                if (item.website === 'Epic Games' && item.eaPlay) {
+                    const eaIcon = document.createElement('img');
+                    eaIcon.src = '/icons/ea.png';
+                    eaIcon.alt = 'EA Play';
+                    eaIcon.title = 'Available on EA Play';
+                    eaIcon.className = 'game-pass-inline-icon';
+                    nameCell.appendChild(eaIcon);
+                }
                 // Store Icon
                 const iconCell = row.insertCell(3);
                 const storeIcon = document.createElement('img');
                 if (item.website === 'GOG') storeIcon.src = '/icons/GOG.png';
                 else if (item.website === 'Eneba') storeIcon.src = '/icons/Eneba.png';
                 else if (item.website === 'Kinguin') storeIcon.src = '/icons/Kinguin.jpg';
-                else if (item.website === 'Xbox Game Pass') storeIcon.src = '/icons/Xbox.jpg';
-                else if (item.website === 'G2A') storeIcon.src = '/icons/g2a.jpg';
+                else if (item.website === 'Xbox India') storeIcon.src = '/icons/xbox.jpg';
                 else storeIcon.src = item.icon;
                 storeIcon.alt = item.website + ' Logo';
                 storeIcon.title = item.website; // Show store name on hover
                 storeIcon.classList.add('store-icon'); // Add class for styling
                 iconCell.appendChild(storeIcon);
                 // Price
-                row.insertCell(4).textContent = (typeof item.price === 'number' && item.price === 0) ? '0' : (typeof item.price === 'number' ? `₹ ${item.price.toLocaleString('en-IN')}` : item.price);
-                // Link
-                const linkCell = row.insertCell(5);
-                const link = document.createElement('a');
-                link.href = item.link;
-                link.textContent = 'Go to Store';
-                link.target = '_blank';
-                linkCell.appendChild(link);
+                let priceDisplay;
+                if ((item.website === 'Xbox Game Pass' || item.website === 'Steam') && item.priceText) {
+                    // Use priceText for Xbox Game Pass and Steam entries
+                    priceDisplay = item.priceText;
+                } else {
+                    // Use existing logic for other stores
+                    priceDisplay = (typeof item.price === 'number' && item.price === 0) ? '0' : (typeof item.price === 'number' ? `₹ ${item.price.toLocaleString('en-IN')}` : item.price);
+                }
+                row.insertCell(4).textContent = priceDisplay;
             });
         }
     }
@@ -224,7 +286,17 @@ document.addEventListener('DOMContentLoaded', () => {
                     // Normalize to string first if it's already a number
                     const strVal = String(priceStr).toLowerCase(); 
 
-                    if (strVal === 'free' || strVal === 'game pass') { // Handle 'Free' string or 'Game Pass' string (if still somehow present)
+                    // Handle "Game Pass only" entries - they should be treated specially
+                    if (strVal === 'game pass only') {
+                        return -1; // Special value for "Game Pass only" entries
+                    }
+                    
+                    // Handle "Free" entries - they should be treated specially
+                    if (strVal === 'free') {
+                        return -2; // Special value for "Free" entries (even lower than Game Pass only)
+                    }
+                    
+                    if (strVal === 'game pass') { // Handle 'Game Pass' string (if still somehow present)
                         return 0; 
                     }
                     // For numerical 0 (coming from backend), parseFloat("0") will handle it
@@ -232,8 +304,25 @@ document.addEventListener('DOMContentLoaded', () => {
                     return isNaN(parsed) ? null : parsed; // Use null for true non-numeric values
                 };
 
-                let numA = parsePriceForSort(valA);
-                let numB = parsePriceForSort(valB);
+                // Check if we have priceText field for special entries
+                let numA, numB;
+                
+                // Check for special entries in priceText field first
+                if (a.priceText === 'Game Pass only') {
+                    numA = -1; // Special value for "Game Pass only"
+                } else if (a.priceText === 'Free') {
+                    numA = -2; // Special value for "Free" entries
+                } else {
+                    numA = parsePriceForSort(valA);
+                }
+                
+                if (b.priceText === 'Game Pass only') {
+                    numB = -1; // Special value for "Game Pass only"
+                } else if (b.priceText === 'Free') {
+                    numB = -2; // Special value for "Free" entries
+                } else {
+                    numB = parsePriceForSort(valB);
+                }
 
                 console.log(`  Comparing "${valA}" (parsed: ${numA}) vs "${valB}" (parsed: ${numB})`); // DEBUG: show parsed values
 
@@ -242,7 +331,29 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (numA === null) return 1; // A is non-numeric, push A to end
                 if (numB === null) return -1; // B is non-numeric, push B to end
 
-                // Now compare numeric values (including 'Free' and 'Game Pass' as 0)
+                // Special handling for "Free" and "Game Pass only" entries
+                if (numA === -2 && numB === -2) {
+                    // Both are "Free", sort by name
+                    const nameA = String(a.name || '').toLowerCase();
+                    const nameB = String(b.name || '').toLowerCase();
+                    return nameA.localeCompare(nameB);
+                }
+                if (numA === -1 && numB === -1) {
+                    // Both are "Game Pass only", sort by name
+                    const nameA = String(a.name || '').toLowerCase();
+                    const nameB = String(b.name || '').toLowerCase();
+                    return nameA.localeCompare(nameB);
+                }
+                
+                // "Free" entries come first in ascending order, last in descending order
+                if (numA === -2) return order === 'asc' ? -1 : 1;
+                if (numB === -2) return order === 'asc' ? 1 : -1;
+                
+                // "Game Pass only" entries come after "Free" in ascending order
+                if (numA === -1) return order === 'asc' ? -1 : 1;
+                if (numB === -1) return order === 'asc' ? 1 : -1;
+
+                // Now compare numeric values
                 if (numA < numB) {
                     return order === 'asc' ? -1 : 1;
                 }
@@ -287,6 +398,9 @@ document.addEventListener('DOMContentLoaded', () => {
             return;
         }
 
+        // Fetch YouTube videos for the game (append ' review' to the query)
+        fetchYouTubeVideos(gameName + ' review');
+
         priceTableBody.innerHTML = '';
         noResultsP.classList.add('hidden');
         loadingDiv.classList.remove('hidden');
@@ -326,6 +440,10 @@ document.addEventListener('DOMContentLoaded', () => {
             const data = await response.json();
             fetchedResults = data;
             console.log('Fetched results from backend:', fetchedResults); // LOG
+            
+            // Re-select checkboxes after fetching results to ensure they are available
+            storeCheckboxes = document.querySelectorAll('#filter-stores input[type="checkbox"]');
+            
             filterResultsByStore();
             updateStoreFilterCounts(); // Update counts after fetching
 
@@ -337,6 +455,7 @@ document.addEventListener('DOMContentLoaded', () => {
             } else {
                 noResultsP.classList.remove('hidden');
             }
+            playSuccessSound();
 
         } catch (error) {
             if (error.name === 'AbortError') {
@@ -350,6 +469,8 @@ document.addEventListener('DOMContentLoaded', () => {
             }
             loadingDiv.classList.add('hidden');
             stopSearchButton.classList.add('hidden'); // Hide stop search button on error
+            displayedResults = []; // Clear the results array on error
+            updatePaginationControls(); // Reset pagination on error
         } finally {
             abortController = null; // Clear controller after request
         }
@@ -366,6 +487,9 @@ document.addEventListener('DOMContentLoaded', () => {
         noResultsP.classList.remove('hidden');
         priceTableBody.innerHTML = ''; // Clear table
         paginationControls.classList.add('hidden');
+        paginationControlsBottom.classList.add('hidden');
+        displayedResults = []; // Clear the results array
+        updatePaginationControls(); // Reset pagination display
     });
 
     // Event listeners for sorting
@@ -387,14 +511,25 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     });
 
-    // Add event listeners to each store checkbox
-    storeCheckboxes.forEach(checkbox => {
-        checkbox.addEventListener('change', (event) => {
-            handleAllStoresCheckbox(event.target);
-            // Apply filter immediately when checkbox changes
-            filterResultsByStore();
+    // Add event listeners to each store checkbox after they are created
+    function setupCheckboxListeners() {
+        const checkboxes = document.querySelectorAll('#filter-stores input[type="checkbox"]');
+        checkboxes.forEach(checkbox => {
+            checkbox.addEventListener('change', (event) => {
+                handleAllStoresCheckbox(event.target);
+                // Only apply filter if there are already results
+                if (fetchedResults.length > 0) {
+                    filterResultsByStore();
+                }
+            });
         });
-    });
+    }
+
+    // Populate filters on page load
+    populateStoreFilters();
+    storeCheckboxes = document.querySelectorAll('#filter-stores input[type="checkbox"]');
+    setupCheckboxListeners();
+
 
     // New: Handle initial state of "All Stores" checkbox on page load
     const initialAllCheckbox = document.getElementById('allStores');
@@ -420,6 +555,17 @@ document.addEventListener('DOMContentLoaded', () => {
         goToPage(currentPage + 1);
     });
 
+    gameNameInput.addEventListener('keyup', (event) => {
+        if (event.key === 'Enter') {
+            event.preventDefault();
+            if (!loadingDiv.classList.contains('hidden')) {
+                stopSearchButton.click();
+            } else {
+                searchButton.click();
+            }
+        }
+    });
+
     // Initial setup: ensure 'All Stores' is initially checked and others are disabled/greyed out
     const allStoresCheckbox = Array.from(storeCheckboxes).find(cb => cb.value === 'All');
     if (allStoresCheckbox) {
@@ -435,7 +581,7 @@ document.addEventListener('DOMContentLoaded', () => {
             storeCounts[item.website]++;
         });
         // Update the count badges in the sidebar
-        document.querySelectorAll('#sidebar-filters .filter-checkbox').forEach(cbDiv => {
+        document.querySelectorAll('#filter-stores .filter-checkbox').forEach(cbDiv => {
             const input = cbDiv.querySelector('input[type="checkbox"]');
             const label = cbDiv.querySelector('label');
             if (!input || !label) return;
@@ -451,6 +597,19 @@ document.addEventListener('DOMContentLoaded', () => {
             badge.textContent = `(${count})`;
             label.appendChild(badge);
         });
+    }
+
+    function playSuccessSound() {
+        const audio = document.getElementById('searchCompleteAudio');
+        if (audio) {
+            audio.currentTime = 8;
+            audio.play().catch(e => console.error("Audio play failed:", e));
+            setTimeout(() => {
+                if (audio) {
+                    audio.pause();
+                }
+            }, 700);
+        }
     }
 
     // Add filter stores toggle arrow logic
@@ -475,6 +634,103 @@ document.addEventListener('DOMContentLoaded', () => {
             });
         }
     });
+
+    function searchGames() {
+      // This function is intentionally left blank.
+      // It was a duplicate and was causing a bug that prevented the store filters from loading.
+    }
+
+    async function fetchYouTubeVideos(gameName) {
+        const youtubeContainer = document.getElementById('youtube-container');
+        const youtubeVideosDiv = document.getElementById('youtube-videos');
+        youtubeContainer.style.display = 'none'; // Hide initially
+        youtubeVideosDiv.innerHTML = '';
+
+        try {
+            const response = await fetch(`http://localhost:3000/youtube-videos?q=${encodeURIComponent(gameName)}`);
+            if (!response.ok) {
+                throw new Error(`YouTube fetch failed with status: ${response.status}`);
+            }
+            const videos = await response.json();
+
+            // Always show the container after a successful fetch
+            youtubeContainer.style.display = 'block'; 
+
+            if (videos.length > 0) {
+                videos.forEach(video => {
+                    const videoItem = document.createElement('div');
+                    videoItem.className = 'video-item';
+
+                    const thumbnail = document.createElement('img');
+                    thumbnail.src = video.thumbnail;
+                    thumbnail.alt = video.title;
+                    thumbnail.className = 'video-thumbnail';
+
+                    const videoLink = document.createElement('a');
+                    videoLink.href = `https://www.youtube.com/watch?v=${video.videoId}`;
+                    videoLink.target = '_blank';
+                    videoLink.rel = 'noopener noreferrer';
+                    
+                    const videoInfo = document.createElement('div');
+                    videoInfo.className = 'video-info';
+
+                    const title = document.createElement('p');
+                    title.className = 'video-title';
+                    title.textContent = video.title;
+
+                    const meta = document.createElement('p');
+                    meta.className = 'video-meta';
+                    const viewCountText = video.viewCount.replace(' views', '');
+
+                    const publishedTimeSpan = document.createElement('span');
+                    publishedTimeSpan.textContent = `${video.publishedTime} •`;
+
+                    const eyeIcon = document.createElement('img');
+                    eyeIcon.src = 'icons/eye.png';
+                    eyeIcon.alt = 'views';
+                    eyeIcon.className = 'view-icon';
+
+                    const viewCountSpan = document.createElement('span');
+                    viewCountSpan.textContent = viewCountText;
+
+                    meta.appendChild(publishedTimeSpan);
+                    meta.appendChild(eyeIcon);
+                    meta.appendChild(viewCountSpan);
+
+                    videoInfo.appendChild(title);
+                    videoInfo.appendChild(meta);
+                    videoLink.appendChild(thumbnail);
+                    videoLink.appendChild(videoInfo);
+                    videoItem.appendChild(videoLink);
+                    youtubeVideosDiv.appendChild(videoItem);
+                });
+            } else {
+                 youtubeVideosDiv.innerHTML = '<p>No videos found.</p>';
+            }
+        } catch (error) {
+            console.error('Error fetching YouTube videos:', error);
+            youtubeContainer.style.display = 'none';
+        }
+    }
+
+    function displayResults(data) {
+        const priceTableBody = document.getElementById('priceTable').getElementsByTagName('tfoot')[0];
+        const noResults = document.getElementById('noResults');
+
+        // Clear previous results
+        priceTableBody.innerHTML = '';
+
+        if (data.length > 0) {
+            noResults.style.display = 'none';
+        } else {
+            noResults.style.display = 'block';
+        }
+
+        currentPage = 1;
+        paginatedData = data;
+        renderTablePage(currentPage);
+        updatePaginationControls();
+    }
 });
 
 
