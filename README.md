@@ -7,7 +7,8 @@ This project is a full-stack web application that allows users to search and com
 ---
 ## Sample
 
-![image](https://github.com/user-attachments/assets/7f975899-3602-468c-a1c7-8caa276105da)
+![image](https://github.com/user-attachments/assets/fd88b865-cfec-4c20-838e-50278488382b)
+
 
 ## Features
 
@@ -17,6 +18,8 @@ This project is a full-stack web application that allows users to search and com
 - **Game images and store icons**: Visual results with large, clear images and store branding.
 - **Direct links**: Click to go directly to the game's page on the store.
 - **Responsive UI**: Works well on desktop and mobile.
+- **Youtube Reviews** - Shows reviews on side
+- **Subscriptions** - Shows if available on Games Pass or Ea Play
 
 
 ---
