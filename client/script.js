@@ -47,7 +47,12 @@ document.addEventListener('DOMContentLoaded', () => {
             { id: 'cdkeys', value: 'CDKeys', title: 'CDKeys', icon: 'https://upload.wikimedia.org/wikipedia/commons/f/f3/CD_Keys.png' },
             { id: 'kinguin', value: 'Kinguin', title: 'Kinguin', icon: '/icons/Kinguin.jpg' },
             { id: 'epic', value: 'Epic Games', title: 'Epic Games', icon: 'https://upload.wikimedia.org/wikipedia/commons/5/57/Epic_games_store_logo.svg' },
-            { id: 'xbox', value: 'Xbox India', title: 'Xbox India', icon: '/icons/xbox.jpg' }
+            { id: 'xbox', value: 'Xbox India', title: 'Xbox India', icon: '/icons/xbox.jpg' },
+            { id: 'fanatical', value: 'Fanatical', title: 'Fanatical', icon: '/icons/Fanatical.png' },
+            // GameSeal is temporarily disabled in the frontend filter list
+            // { id: 'gameseal', value: 'GameSeal', title: 'GameSeal', icon: '/icons/seal.png' },
+            // K4G is temporarily disabled in the frontend filter list
+            // { id: 'K4G', value: 'K4G', title: 'K4G', icon: '/icons/k4g.png' },
         ];
 
         stores.forEach(store => {
@@ -240,16 +245,22 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-    // Function to update pagination controls (buttons, page info)
+    // Helper to get filtered results (excluding Xbox India price -1)
+    function getFilteredResults() {
+        return displayedResults.filter(item => !(item.website === 'Xbox India' && item.price === -1));
+    }
+
+    // Update pagination controls to use filtered results
     function updatePaginationControls() {
-        const totalPages = Math.ceil(displayedResults.length / itemsPerPage);
+        const filteredResults = getFilteredResults();
+        const totalPages = Math.ceil(filteredResults.length / itemsPerPage);
         pageInfoSpan.textContent = `Page ${currentPage} of ${totalPages || 1}`;
         pageInfoSpanBottom.textContent = `Page ${currentPage} of ${totalPages || 1}`;
         prevPageButton.disabled = currentPage === 1;
         nextPageButton.disabled = currentPage === totalPages || totalPages === 0;
         prevPageButtonBottom.disabled = currentPage === 1;
         nextPageButtonBottom.disabled = currentPage === totalPages || totalPages === 0;
-        if (displayedResults.length > 0) {
+        if (filteredResults.length > 0) {
             paginationControls.classList.remove('hidden');
             paginationControlsBottom.classList.remove('hidden');
         } else {
@@ -258,15 +269,16 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-    // Function to go to a specific page
+    // Update goToPage to use filtered results
     function goToPage(page) {
-        const totalPages = Math.ceil(displayedResults.length / itemsPerPage);
+        const filteredResults = getFilteredResults();
+        const totalPages = Math.ceil(filteredResults.length / itemsPerPage);
         if (page < 1 || (page > totalPages && totalPages > 0)) return;
 
         currentPage = page;
         const startIndex = (currentPage - 1) * itemsPerPage;
         const endIndex = startIndex + itemsPerPage;
-        const resultsOnPage = displayedResults.slice(startIndex, endIndex);
+        const resultsOnPage = filteredResults.slice(startIndex, endIndex);
 
         renderTablePage(resultsOnPage);
         updatePaginationControls();
@@ -602,6 +614,7 @@ document.addEventListener('DOMContentLoaded', () => {
     function playSuccessSound() {
         const audio = document.getElementById('searchCompleteAudio');
         if (audio) {
+            audio.volume = 0.35; // Reduce volume by 35%
             audio.currentTime = 8;
             audio.play().catch(e => console.error("Audio play failed:", e));
             setTimeout(() => {

@@ -2,33 +2,45 @@
 
 ## Overview
 
-This project is a full-stack web application that allows users to search and compare game prices across multiple online stores, including Steam, Epic Games, GOG, CDKeys, Xbox Game Pass, and more. The app features a modern, responsive frontend and a robust Node.js backend that scrapes live prices using Puppeteer and Cheerio.
+This project is a full-stack web application that allows users to search and compare game prices across multiple online stores, including Steam, Epic Games, GOG, CDKeys, Xbox (India), Eneba, Kinguin, and more. The app features a modern, responsive frontend and a robust Node.js backend that scrapes live prices using Puppeteer and Cheerio.
 
 ---
+## Sample
+
+![image](https://github.com/user-attachments/assets/fd88b865-cfec-4c20-838e-50278488382b)
 
 ## Features
 
 - **Search for any game** and instantly compare prices across supported stores.
 - **Store filters**: Select which stores to include in your search.
-- **Paginated, sortable results table**: Sort by game name, store, or price.
-- **Game images and store icons**: Visual results with large, clear images and store branding.
-- **Direct links**: Click to go directly to the game's page on the store.
-- **Responsive UI**: Works well on desktop and mobile.
-- **Collapsible filter sidebar**: Easily show/hide store filters for a cleaner interface.
+- **Paginated, sortable results table**: Sort by game name, store, or price. Table auto-sorts by price ascending after every search or filter change.
+- **YouTube Reviews**: Shows a sidebar of YouTube review videos for the searched game, sorted by view count (descending). Only review videos are shown ("review" is appended to the search query).
+- **Subscription Badges**: 
+  - Shows a Game Pass icon next to the game name if available on Xbox Game Pass (India).
+  - Shows an EA Play icon next to the game name if available on EA Play via Epic Games.
+- **Region Filtering**: Only shows results for India or global/ROW/Asia regions. All other country/region-locked results are excluded using a comprehensive exclusion list (now without 2-letter codes).
+- **Audio Feedback**: Plays a short success sound when a search completes.
+
 
 ---
 
 ## Supported Stores
 
 - Steam
-- Epic Games Store
+- Epic Games Store (with EA Play detection)
 - GOG.com
 - CDKeys
-- Xbox Game Pass
+- Xbox (India, with Game Pass detection)
 - Eneba
 - Kinguin
+- Fanatical
+- gamekeys
 
 > **Note:** G2A support was attempted but is currently disabled due to anti-bot protections.
+
+**Note:** K4G support is currently disabled due to anti-bot protection. If anti-bot issues are resolved in the future, you can re-enable K4G by uncommenting the relevant code in the backend and frontend.
+
+**Note:** GameSeal support is currently disabled due to anti-bot protection. If anti-bot issues are resolved in the future, you can re-enable GameSeal by uncommenting the relevant code in the backend and frontend.
 
 ---
 
@@ -38,22 +50,6 @@ This project is a full-stack web application that allows users to search and com
 - **Backend:** Node.js, Express.js
 - **Scraping:** Puppeteer (headless Chrome), Cheerio
 - **Other:** Excel parsing (for movie catalog), Python (for IMDB heatmap), and more
-
----
-
-## Recent Improvements
-
-- **Backend:**
-  - Unified scraping logic for all stores: robust extraction of title, price, image, and link from search results.
-  - Improved price extraction and currency conversion (USD to INR where needed).
-  - Added realistic HTTP headers and explicit waits for more reliable scraping.
-  - Debug logging for image extraction and result counts.
-  - G2A scraping logic implemented but currently disabled due to anti-bot issues.
-- **Frontend:**
-  - Increased product/game image size by 30% for better visibility.
-  - Table cells and images are now properly sized and centered.
-  - Added a blue arrow button to collapse/expand the filter sidebar with smooth animation.
-  - Store filter counts update dynamically based on search results.
 
 ---
 
@@ -77,20 +73,32 @@ This project is a full-stack web application that allows users to search and com
 
 ---
 
+## Restrictions & Known Issues
+
+- **Region Filtering:** Only India/global/ROW/Asia results are shown. All other country/region-locked results are excluded.
+- **G2A is disabled** due to anti-bot protections.
+- **Epic Games/Eneba**: May be rate-limited or blocked by bot protection after repeated searches.
+- **YouTube API**: Uses scraping, not the official API, and may break if YouTube changes its structure.
+- **Xbox India**: Only Indian store is supported; US/other regions are not scraped.
+- **Game Pass/EA Play**: Detection is best-effort and may miss some titles if store search changes.
+- **PowerShell**: Use `;` instead of `&&` to chain commands in Windows PowerShell.
+
+---
+
 ## Troubleshooting
 
 - If you encounter issues with scraping (e.g., missing results, access denied), some stores may have updated their anti-bot protections.
 - G2A is currently disabled due to such issues.
 - For Git errors (e.g., file lock issues), ensure no other programs are using the repo and try running your terminal as administrator.
-
----
-
-## Contributing
-
-Pull requests and suggestions are welcome! Please open an issue or submit a PR for improvements or bug fixes.
+- If you see `Search stopped` or empty results, check backend logs for scraping errors or region filtering exclusions.
 
 ---
 
 ## License
 
 This project is for educational and personal use. Please respect the terms of service of the stores you scrape. 
+
+**New Store Added:** GameSeal (https://gameseal.com)
+- Searches for games using the same logic as other stores.
+- Extracts title, image, price (EUR converted to INR), and direct link.
+- Uses the /icons/seal.png logo. 

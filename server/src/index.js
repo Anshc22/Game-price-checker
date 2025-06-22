@@ -23,6 +23,9 @@ const storeIcons = {
     'Kinguin': 'https://upload.wikimedia.org/wikipedia/commons/8/8a/Kinguin_logo.png', // Alternative Kinguin logo
     'Epic Games': 'https://upload.wikimedia.org/wikipedia/commons/5/57/Epic_games_store_logo.svg',
     'Xbox Game Pass': 'https://upload.wikimedia.org/wikipedia/commons/d/d3/Xbox_Game_Pass_logo_-_colored_version.svg',
+    'Fanatical': '/icons/fanatical.png',
+    'K4G': '/icons/k4g.png',
+    'GameSeal': '/icons/seal.png',
 };
 
 let browserInstance = null; // Shared Puppeteer browser instance
@@ -328,7 +331,7 @@ async function searchCDKeys(gameName, browser) {
     // Wait for results to render
     try {
       await page.waitForSelector('div.p-2.5.text-white.font-semibold.uppercase.min-h-[68px].product-item-link, div.product.photo.product-item-photo', { timeout: 3000 });
-      await new Promise(resolve => setTimeout(resolve, 200)); // Wait 0.2 second for dynamic content
+      await new Promise(resolve => setTimeout(resolve, 2000)); // Wait 2 seconds for dynamic content
     } catch (e) {
       
     }
@@ -411,7 +414,7 @@ async function searchCDKeys(gameName, browser) {
         // Wait for results to render
         try {
           await page.waitForSelector('div.p-2.5.text-white.font-semibold.uppercase.min-h-[68px].product-item-link, div.product.photo.product-item-photo', { timeout: 3000 });
-          await new Promise(resolve => setTimeout(resolve, 200)); // Wait 0.2 second for dynamic content
+          await new Promise(resolve => setTimeout(resolve, 2000)); // Wait 2 seconds for dynamic content
         } catch (e) {
           console.log('CDKeys: No result selector found after waiting (relaxed query).');
         }
@@ -571,9 +574,9 @@ async function searchEpicGames(gameName, browser) {
     await page.goto(searchUrl, { waitUntil: 'domcontentloaded', timeout: 75000 });
 
     const html = await page.content();
-    console.log('--- EPIC GAMES HTML START ---');
-    console.log(html.substring(0, 2000)); // Print the first 2000 characters for brevity
-    console.log('--- EPIC GAMES HTML END ---');
+    // console.log('--- EPIC GAMES HTML START ---');
+    // console.log(html.substring(0, 2000)); // Print the first 2000 characters for brevity
+    // console.log('--- EPIC GAMES HTML END ---');
     const $ = cheerio.load(html);
 
     const linkAs = $('a.css-g3jcms').toArray();
@@ -989,7 +992,7 @@ async function searchXboxIndia(gameName, browser) {
         priceText = 'Game Pass only';
       }
       
-      console.log(`[XboxIndia] Game: '${name}', aria-label: '${ariaLabel}', price: ${price}`);
+      // console.log(`[XboxIndia] Game: '${name}', aria-label: '${ariaLabel}', price: ${price}`);
       
       let image = '';
       if (imgTags[i]) {
@@ -1040,7 +1043,7 @@ async function searchXboxIndia(gameName, browser) {
     // 3. Merge info
     for (const game of mainGames) {
       const isGamePass = gamePassTitles.has(game.name.trim().toLowerCase());
-      results.push({
+        results.push({
         name: game.name,
         price: game.price,
         priceText: game.priceText,
@@ -1064,6 +1067,151 @@ async function searchXboxIndia(gameName, browser) {
     console.log(`[Xbox India] Entries: ${results.length}, Time: ${duration}ms${error ? ', Error: ' + error.message : ''}`);
   }
 }
+
+// Function to scrape thegamekeys.in for game prices
+async function searchTheGameKeys(gameName, browser) {
+  let page;
+  const results = [];
+  const start = Date.now();
+  let error = null;
+  try {
+    const searchUrl = `https://thegamekeys.in/?s=${encodeURIComponent(gameName)}&post_type=product`;
+    page = await browser.newPage();
+    await page.evaluateOnNewDocument(() => {
+      Object.defineProperty(navigator, 'webdriver', { get: () => false });
+    });
+    await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Safari/537.36');
+    await page.setViewport({ width: 1280, height: 900 });
+    await page.setExtraHTTPHeaders({
+      'Accept-Language': 'en-US,en;q=0.9',
+      'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+      'Referer': 'https://thegamekeys.in/'
+    });
+    await new Promise(resolve => setTimeout(resolve, 100 + Math.floor(Math.random() * 300)));
+    await page.goto(searchUrl, { waitUntil: 'networkidle2', timeout: 60000 });
+    await new Promise(resolve => setTimeout(resolve, 3000)); // Wait longer for dynamic content
+
+    const html = await page.content();
+    const $ = cheerio.load(html);
+
+    // Select each product card
+    $('.product-small.col.has-hover.product').each((i, card) => {
+      const colInner = $(card).find('.col-inner');
+      const imageFade = colInner.find('.image-fade_in_back');
+      const a = imageFade.find('a[aria-label]');
+      const img = a.find('img');
+      const name = a.attr('aria-label') || img.attr('alt') || '';
+      const link = a.attr('href') || '';
+      const image = img.attr('src') || '';
+      // Price: try to get the <ins> price, fallback to <bdi> directly
+      let price = null;
+      let priceText = '';
+      const priceBdi = colInner.find('.price-wrapper ins .amount bdi').first().text() ||
+                       colInner.find('.price-wrapper .amount bdi').first().text();
+      if (priceBdi) {
+        price = parseFloat(priceBdi.replace(/[^\d.]/g, ''));
+        priceText = `₹${price}`;
+      }
+      if (name && link && image && price !== null) {
+        results.push({
+          name,
+          price,
+          priceText,
+          website: 'TheGameKeys',
+          link,
+          icon: '/icons/gamekeys.png',
+          image
+        });
+      }
+    });
+    return results;
+  } catch (err) {
+    error = err;
+    return [];
+  } finally {
+    if (page) { try { await page.close(); } catch (e) { /* ignore */ } }
+    const duration = Date.now() - start;
+    console.log(`[TheGameKeys] Entries: ${results.length}, Time: ${duration}ms${error ? ', Error: ' + error.message : ''}`);
+  }
+}
+
+const FANATICAL_TO_INR = 83; // Use the same USD to INR rate as GOG for now
+
+async function searchFanatical(gameName, browser) {
+  let page;
+  const results = [];
+  const start = Date.now();
+  let error = null;
+  try {
+    const searchUrl = `https://www.fanatical.com/en/search?search=${encodeURIComponent(gameName)}`;
+    page = await browser.newPage();
+    await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Safari/537.36');
+    await page.setViewport({ width: 1280, height: 900 });
+    await page.setExtraHTTPHeaders({
+      'Accept-Language': 'en-US,en;q=0.9',
+      'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+      'Referer': 'https://www.fanatical.com/'
+    });
+    await new Promise(resolve => setTimeout(resolve, 100 + Math.floor(Math.random() * 300)));
+    await page.goto(searchUrl, { waitUntil: 'networkidle2', timeout: 60000 });
+    await new Promise(resolve => setTimeout(resolve, 2000));
+    const html = await page.content();
+    const $ = cheerio.load(html);
+    $('.HitCard__main').each((i, card) => {
+      const a = $(card).find('a.HitCard__main__cover');
+      const img = a.find('img');
+      const title = $(card).find('.hitCardStripe__seoName').text().trim() || img.attr('alt') || '';
+      let link = a.attr('href') || '';
+      if (link && !link.startsWith('http')) link = `https://www.fanatical.com${link}`;
+      let image = img.attr('src') || '';
+      if (!image && img.attr('srcset')) {
+        // Use the largest image in srcset
+        const srcset = img.attr('srcset').split(',').map(s => s.trim().split(' ')[0]);
+        image = srcset[0] || '';
+      }
+      // Price: get the .card-price (current price)
+      let priceText = $(card).find('.card-price').first().text().trim();
+      let price = null;
+      if (priceText) {
+        // Remove $ and commas, parse as float
+        const usd = parseFloat(priceText.replace(/[^\d.]/g, ''));
+        if (!isNaN(usd)) {
+          price = Math.round(usd * FANATICAL_TO_INR);
+          priceText = `₹${price}`;
+        } else {
+          price = null;
+        }
+      }
+      if (title && link && image && price !== null) {
+        results.push({
+          name: title.trim(),
+          price,
+          priceText,
+          website: 'Fanatical',
+          link,
+          icon: '/icons/Fanatical.png',
+          image
+        });
+      }
+    });
+    return results;
+  } catch (err) {
+    error = err;
+    return [];
+  } finally {
+    if (page) { try { await page.close(); } catch (e) { /* ignore */ } }
+    const duration = Date.now() - start;
+    console.log(`[Fanatical] Entries: ${results.length}, Time: ${duration}ms${error ? ', Error: ' + error.message : ''}`);
+  }
+}
+
+// Comment out K4G in storeIcons
+// storeIcons['K4G'] = '/icons/k4g.png';
+
+// Comment out K4G in /search endpoint
+// if (selectedStores.includes('All') || selectedStores.includes('K4G')) {
+//   searchPromises.push(searchK4G(gameName, browserInstance));
+// }
 
 // Updated app.get('/search') endpoint
 app.get('/search', async (req, res) => {
@@ -1100,6 +1248,15 @@ app.get('/search', async (req, res) => {
     if (selectedStores.includes('All') || selectedStores.includes('Xbox Game Pass') || selectedStores.includes('Xbox India')) {
       searchPromises.push(searchXboxIndia(gameName, browserInstance));
     }
+    if (selectedStores.includes('All') || selectedStores.includes('TheGameKeys')) {
+      searchPromises.push(searchTheGameKeys(gameName, browserInstance));
+    }
+    if (selectedStores.includes('All') || selectedStores.includes('Fanatical')) {
+      searchPromises.push(searchFanatical(gameName, browserInstance));
+    }
+    // if (selectedStores.includes('All') || selectedStores.includes('GameSeal')) {
+    //   searchPromises.push(searchGameSeal(gameName, browserInstance));
+    // }
 
     const allResultsArrays = await Promise.all(searchPromises);
     let allResults = allResultsArrays.flat();
@@ -1110,7 +1267,7 @@ app.get('/search', async (req, res) => {
     const userWantsExcludedContent = exclusionKeywords.some(keyword => lowerCaseGameName.includes(keyword));
 
     let filteredResults = userWantsExcludedContent ? allResults : allResults.filter(result => {
-        const lowerCaseResultName = result.name.toLowerCase();
+        const lowerCaseResultName = (result && result.name ? result.name.toLowerCase() : '');
         return !exclusionKeywords.some(keyword => lowerCaseResultName.includes(keyword));
       });
 
@@ -1120,7 +1277,7 @@ app.get('/search', async (req, res) => {
     const strictRegex = new RegExp(`\\b${escapedGameName}\\b`, 'i');
 
     const primaryMatches = filteredResults.filter(result => {
-        const lowerCaseResultName = result.name.toLowerCase();
+        const lowerCaseResultName = (result && result.name ? result.name.toLowerCase() : '');
         if (lowerCaseResultName === lowerCaseGameName) return true;
         if (strictRegex.test(lowerCaseResultName)) {
             // Additional checks for punctuation to avoid matching 'game' with 'game-of-the-year'
@@ -1140,7 +1297,9 @@ app.get('/search', async (req, res) => {
       } else {
         // No primary matches found, proceed to secondary matching
         matchedResults = filteredResults.filter(result => {
-            const significantWordsResult = getSignificantWords(result.name.toLowerCase());
+            const significantWordsResult = getSignificantWords(
+                result && result.name ? result.name.toLowerCase() : ''
+            );
             return significantWordsQuery.every(queryWord => significantWordsResult.includes(queryWord));
         });
     }
@@ -1216,15 +1375,26 @@ app.get('/youtube-videos', async (req, res) => {
 app.listen(PORT, async () => {
   console.log(`Server is running on http://localhost:${PORT}`);
   try {
-    browserInstance = await puppeteer.launch({
-        headless: 'new',
-        args: ['--no-sandbox', '--disable-setuid-sandbox']
+    browserInstance = await puppeteer.launch({ headless: true });
+    if (!browserInstance) throw new Error('Puppeteer launch returned null');
+    const page = await browserInstance.newPage();
+    await page.evaluateOnNewDocument(() => {
+      Object.defineProperty(navigator, 'webdriver', { get: () => false });
     });
-    console.log('Puppeteer browser launched successfully.');
-  } catch (error) {
-    console.error('Failed to launch Puppeteer browser:', error);
-    process.exit(1); // Exit if browser fails to launch
+    await page.close();
+    console.log('Puppeteer browser launched with stealth mode');
+  } catch (err) {
+    browserInstance = null;
+    console.error('Failed to launch Puppeteer browser:', err);
   }
+});
+
+// Add a middleware to check browserInstance before search endpoints
+app.use((req, res, next) => {
+  if ((req.path === '/search' || req.path === '/search/') && !browserInstance) {
+    return res.status(500).json({ error: 'Puppeteer browser is not available. Please check server logs.' });
+  }
+  next();
 });
 
 // Handle graceful shutdown
@@ -1268,3 +1438,114 @@ const findVideoRenderers = (obj) => {
     recurse(obj);
     return results;
 };
+
+const GAMESEAL_TO_INR = 90; // Example conversion rate, update as needed
+
+// --- GameSeal Cookie Injection ---
+// To bypass Cloudflare, paste your cookies from your browser below in this array.
+// Example: [{ name: 'cf_clearance', value: '...', domain: '.gameseal.com', path: '/', httpOnly: true, secure: true }]
+const GAMESEAL_COOKIES = [
+  {
+    name: 'session',
+    value: 'ibmla969dppuchaqhfngu6tvf4uufpakk5atinugnn09a184nn6dvdpf4p9mnk78b6lamu090kmm46tq5acflcpgdfuiarbif1egq5m836mn5fcangott6047nk8recn',
+    domain: '.gameseal.com',
+    path: '/',
+    httpOnly: true,
+    secure: true
+  },
+  {
+    name: 'cf_clearance',
+    value: 'JZGcBJ_OgxQ2N7xwIEReOGpOdG2aL4HUDvO.8_19yt8-1750595794-1.2.1.1-oDatja1uXZxPsIQM2np_HJSVf.X4zJGHu9oc20bFnitOh9Fx_.hvFQP83N1Zup1q0TUCDJk0D8u6ooA9MePPHi6L_2KKhWOsufBDdT8hg_c4ce8t4CyB7McKk0nPQDETC7aq.6ijkeT81UWfsqFE2g5.PaJWSR1hp2MfAyhrgD285v3BbV0EtCM9Nt1XoR13y_YIXm04uTcp6vAB05F_xiquLDOTMziPtiCSIvbsacUGiXuSuY90zLxQdW85fYNbnC_0WGaZGzKJApfbNUoS8Qm.ybdGDSlpgFjUolMGcFZNUsDoGpEy5GXs7KZDAFBIRFq0BsVvnn_BIK0YyXdf3l8Iqe8YAH3Vzv0fmubIDjLpYBbtS0hfjNNiP7JStUCE',
+    domain: '.gameseal.com',
+    path: '/',
+    httpOnly: true,
+    secure: true
+  },
+  {
+    name: '__cflb',
+    value: '0H28vmmQFramB3q2rmWtVbBR9cYtXRAhwGBUGD9rbCB',
+    domain: '.gameseal.com',
+    path: '/',
+    httpOnly: true,
+    secure: true
+  }
+];
+
+async function searchGameSeal(gameName, browser) {
+  let page;
+  const results = [];
+  const start = Date.now();
+  let error = null;
+  try {
+    console.log('searchGameSeal called for:', gameName);
+    const searchUrl = `https://gameseal.com/search?search=${encodeURIComponent(gameName)}`;
+    page = await browser.newPage();
+    // Use the same user-agent and headers as Fanatical
+    await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Safari/537.36');
+    await page.setViewport({ width: 1280, height: 900 });
+    await page.setExtraHTTPHeaders({
+      'Accept-Language': 'en-US,en;q=0.9',
+      'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+      'Referer': 'https://gameseal.com/'
+    });
+    // Inject cookies if provided
+    if (GAMESEAL_COOKIES.length > 0) {
+      await page.setCookie(...GAMESEAL_COOKIES);
+      console.log('Injected GameSeal cookies');
+    }
+    await page.goto(searchUrl, { waitUntil: 'networkidle2', timeout: 45000 });
+    await new Promise(resolve => setTimeout(resolve, 5000));
+    let found = false;
+    try {
+      await page.waitForSelector('.card.product-box', { timeout: 5000 });
+      found = true;
+    } catch (e) {
+      try {
+        await page.waitForSelector('.product-box', { timeout: 5000 });
+        found = true;
+      } catch (e2) {
+        found = false;
+      }
+    }
+    const html = await page.content();
+    // console.log('--- GAMESEAL HTML RESPONSE START ---');
+    console.log(html.substring(0, 2000));
+    // console.log('--- GAMESEAL HTML RESPONSE END ---');
+    if (!found) {
+      console.warn('No product card selector found for GameSeal.');
+      await page.close();
+      return { store: 'GameSeal', results: [], time: Date.now() - start, error: 'No product card selector found' };
+    }
+    const $ = cheerio.load(html);
+    $('.card.product-box, .product-box').each((i, el) => {
+      const card = $(el);
+      const link = card.find('a.product-image-link').attr('href') || card.find('a.product-name').attr('href');
+      const href = link && !link.startsWith('http') ? `https://gameseal.com${link}` : link;
+      const img = card.find('a.product-image-link img').attr('src') || card.find('img.product-image').attr('src');
+      const title = card.find('a.product-name').attr('title') || card.find('a.product-image-link').attr('title') || card.find('img.product-image').attr('alt') || '';
+      let priceText = card.find('.product-price-info .product-price-regular').first().text().replace(/[^\d.,]/g, '');
+      if (!priceText) {
+        priceText = card.find('.product-price-info .product-price-list').first().text().replace(/[^\d.,]/g, '');
+      }
+      let price = parseFloat(priceText.replace(',', '.'));
+      if (!isNaN(price)) price = Math.round(price * GAMESEAL_TO_INR);
+      else price = null;
+      if (href && img && title && price !== null) {
+        results.push({
+          name: title.trim(),
+          href,
+          img,
+          price,
+          store: 'GameSeal',
+          icon: '/icons/seal.png',
+        });
+      }
+    });
+    await page.close();
+  } catch (err) {
+    console.error('GameSeal error:', err);
+    error = err.message || String(err);
+    if (page) await page.close();
+  }
+  return { store: 'GameSeal', results, time: Date.now() - start, error };
+}
